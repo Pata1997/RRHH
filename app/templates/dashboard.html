@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Sistema RRHH{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <h1 class="mb-4">
+                <i class="bi bi-speedometer2"></i> Dashboard
+            </h1>
+        </div>
+    </div>
+
+    <!-- Tarjetas de Estadísticas -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card bg-primary text-white">
+                <div class="card-body">
+                    <h5 class="card-title">
+                        <i class="bi bi-people"></i> Total de Empleados
+                    </h5>
+                    <h2 class="card-text">{{ total_empleados }}</h2>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-3">
+            <div class="card bg-success text-white">
+                <div class="card-body">
+                    <h5 class="card-title">
+                        <i class="bi bi-check-circle"></i> Empleados Activos
+                    </h5>
+                    <h2 class="card-text">{{ empleados_activos }}</h2>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-3">
+            <div class="card bg-info text-white">
+                <div class="card-body">
+                    <h5 class="card-title">
+                        <i class="bi bi-clock"></i> Asistencias Hoy
+                    </h5>
+                    <h2 class="card-text">{{ asistencias_hoy }}</h2>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-3">
+            <div class="card bg-warning text-dark">
+                <div class="card-body">
+                    <h5 class="card-title">
+                        <i class="bi bi-file-earmark-text"></i> Última Liquidación
+                    </h5>
+                    <p class="card-text">
+                        {% if ultima_liquidacion %}
+                            {{ ultima_liquidacion.periodo }}
+                        {% else %}
+                            Sin registro
+                        {% endif %}
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Accesos Rápidos -->
+    <div class="row">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header bg-dark text-white">
+                    <h5 class="mb-0">
+                        <i class="bi bi-lightning"></i> Accesos Rápidos
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        {% if current_user.rol.name == 'RRHH' %}
+                            <div class="col-md-3 mb-3">
+                                <a href="{{ url_for('rrhh.listar_empleados') }}" class="btn btn-outline-primary w-100">
+                                    <i class="bi bi-people"></i> Gestionar Empleados
+                                </a>
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <a href="{{ url_for('rrhh.ver_asistencia') }}" class="btn btn-outline-info w-100">
+                                    <i class="bi bi-clock"></i> Registrar Asistencia
+                                </a>
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <a href="{{ url_for('rrhh.generar_liquidacion') }}" class="btn btn-outline-success w-100">
+                                    <i class="bi bi-file-earmark-text"></i> Generar Nómina
+                                </a>
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <a href="{{ url_for('rrhh.ver_bitacora') }}" class="btn btn-outline-warning w-100">
+                                    <i class="bi bi-journal-text"></i> Bitácora
+                                </a>
+                            </div>
+                        {% else %}
+                            <div class="col-md-6 mb-3">
+                                <a href="{{ url_for('rrhh.ver_asistencia') }}" class="btn btn-outline-primary w-100">
+                                    <i class="bi bi-clock"></i> Registrar Asistencia
+                                </a>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <a href="{{ url_for('auth.cambiar_password') }}" class="btn btn-outline-secondary w-100">
+                                    <i class="bi bi-lock"></i> Cambiar Contraseña
+                                </a>
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+
+{% block title %}Solicitar Vacaciones - Sistema RRHH{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <h2><i class="bi bi-calendar-heart"></i> Solicitar Vacaciones</h2>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-body">
+                    <form method="POST" action="{{ url_for('rrhh.solicitar_vacaciones') }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                        <div class="mb-3">
+                            <label for="empleado_id" class="form-label">Empleado</label>
+                            <select class="form-control" id="empleado_id" name="empleado_id" required onchange="cargarDiasDisponibles()">
+                                <option value="">Seleccionar empleado</option>
+                                {% for emp in empleados %}
+                                <option value="{{ emp.id }}">{{ emp.nombre_completo }} ({{ emp.codigo }})</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <div class="alert alert-info" id="diasInfo" style="display:none;">
+                            <strong>Días disponibles:</strong> <span id="diasDisponibles">0</span>
+                        </div>
+
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label for="fecha_inicio" class="form-label">Fecha Inicio</label>
+                                <input type="date" class="form-control" id="fecha_inicio" name="fecha_inicio" required>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="fecha_fin" class="form-label">Fecha Fin</label>
+                                <input type="date" class="form-control" id="fecha_fin" name="fecha_fin" required>
+                            </div>
+                        </div>
+
+                        <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                            <a href="{{ url_for('rrhh.listar_vacaciones') }}" class="btn btn-secondary">Cancelar</a>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="bi bi-check-circle"></i> Solicitar Vacaciones
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function cargarDiasDisponibles() {
+    const empleadoId = document.getElementById('empleado_id').value;
+    if (empleadoId) {
+        document.getElementById('diasInfo').style.display = 'block';
+        document.getElementById('diasDisponibles').textContent = '15'; // Por defecto
+    }
+}
+</script>
+{% endblock %}

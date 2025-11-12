@@ -1,0 +1,171 @@
+# ⚡ LEE ESTO PRIMERO (2 MINUTOS)
+
+## 🎯 ¿QUÉ SE IMPLEMENTÓ?
+
+**DOS módulos completamente funcionales:**
+
+1. **DESPIDOS** (justificados/injustificados)
+   - Registra el despido
+   - Calcula indemnización automática
+   - Calcula aguinaldo de despido
+   - Calcula vacaciones no gozadas
+   - Genera PDF
+
+2. **AGUINALDOS ANUALES** (13º sueldo)
+   - Genera aguinaldos para todos los empleados
+   - Previsualiza antes de generar
+   - Evita duplicados
+   - Descarga PDFs
+
+---
+
+## ✅ ESTADO
+
+- **Backend:** ✅ Completado
+- **Frontend:** ✅ Completado
+- **Menú:** ✅ Integrado
+- **BD:** ⏳ Migración pendiente (tú debes ejecutarla)
+
+---
+
+## 🚀 PRÓXIMO PASO (CRÍTICO)
+
+### **Ejecuta este comando:**
+
+```powershell
+cd "c:\Users\Informatica 1\Desktop\Proyectos\RRHH2"
+python migrations/add_despido_table.py
+```
+
+**Espera a ver:** `✓ MIGRACIÓN COMPLETADA EXITOSAMENTE`
+
+Si algo falla, lee `AGUINALDOS_SIGUIENTE_PASO.txt`
+
+---
+
+## 🗺️ DÓNDE ESTÁN LAS COSAS EN LA APP
+
+### Despidos:
+```
+Menú → Nómina → Registrar Despido
+```
+
+### Aguinaldos:
+```
+Menú → Nómina → Generar Aguinaldo  (para crear)
+Menú → Nómina → Aguinaldos         (para ver listado)
+```
+
+---
+
+## 💡 USO RÁPIDO
+
+### **Registrar un Despido:**
+1. Menú → Nómina → Registrar Despido
+2. Selecciona empleado y tipo
+3. Completa causal y descripción
+4. Se genera liquidación automáticamente
+5. Descargas PDF
+
+### **Generar Aguinaldos:**
+1. Menú → Nómina → Generar Aguinaldo
+2. Selecciona año (2025, etc.)
+3. Previsualiza (sin guardar)
+4. Genera (con confirmación)
+5. Ver listado en Menú → Nómina → Aguinaldos
+
+---
+
+## 📚 DOCUMENTACIÓN
+
+Lee en este orden:
+
+1. **AGUINALDOS_SIGUIENTE_PASO.txt** ← Próximo paso inmediato
+2. **AGUINALDOS_RESUMEN_IMPLEMENTACION.md** ← Visión general
+3. **NAVEGACION_AGUINALDOS_VISUAL.md** ← Pantallas visuales
+4. **AGUINALDOS_MANUAL_RAPIDO.md** ← Guía completa de uso
+5. **IMPLEMENTACION_COMPLETA_DESPIDOS_AGUINALDOS.md** ← Detalles técnicos
+
+---
+
+## 🎁 CÁLCULOS (automáticos, nada que hacer)
+
+### Aguinaldo:
+```
+= (Meses trabajados / 12) × Salario Base
+- IPS 9%
+= Neto
+```
+
+### Indemnización (si injustificado):
+```
+= (1 + años antigüedad, máximo 12 meses) × Salario Base
+```
+
+### Vacaciones no gozadas:
+```
+= Días acumulados × (Salario Base / 30)
+```
+
+---
+
+## ⚡ RESUMEN DE 10 SEGUNDOS
+
+```
+✅ IMPLEMENTADO: Despidos + Aguinaldos (código completo)
+⏳ PENDIENTE: Ejecutar migración (1 comando)
+🎯 RESULTADO: Sistema funcional listo para usar
+
+PRÓXIMO PASO:
+1. PowerShell
+2. cd "c:\Users\Informatica 1\Desktop\Proyectos\RRHH2"
+3. python migrations/add_despido_table.py
+4. ✓ Listo
+```
+
+---
+
+## 🔧 SI ALGO FALLA
+
+| Error | Solución |
+|-------|----------|
+| "Tabla no existe" | Ejecuta migración (arriba) |
+| "No veo botones nuevos" | Recarga navegador (F5) |
+| "Error de rol" | Inicia como usuario RRHH |
+
+---
+
+## 📞 RÁPIDO: ¿DÓNDE ESTÁ...?
+
+| Cosa | Dónde |
+|------|-------|
+| Registrar despido | Menú Nómina → Registrar Despido |
+| Generar aguinaldo | Menú Nómina → Generar Aguinaldo |
+| Ver aguinaldos | Menú Nómina → Aguinaldos |
+| Descargar PDF | Icono PDF en lista |
+| Historia | Menú Bitácora |
+
+---
+
+## ✨ CARACTERÍSTICAS
+
+- ✅ Cálculos automáticos
+- ✅ Preview antes de generar
+- ✅ Evita duplicados
+- ✅ PDF downloadable
+- ✅ Auditoría en Bitácora
+- ✅ Maneja casos especiales (nuevos, retirados)
+
+---
+
+## 🎯 AHORA QUÉ
+
+1. **Ejecuta la migración** (comando arriba)
+2. **Inicia la app** (`python run.py`)
+3. **Ve a Menú → Nómina**
+4. **Prueba registrar despido o generar aguinaldo**
+5. **¡Listo!**
+
+---
+
+**¡Vamos! Ejecuta esa migración primero. El resto ya está hecho.** 🚀

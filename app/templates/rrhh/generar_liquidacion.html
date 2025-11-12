@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+
+{% block title %}Generar Liquidaciones - Sistema RRHH{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <h2><i class="bi bi-file-earmark-plus"></i> Generar Liquidaciones</h2>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-body">
+                    <form method="POST" action="{{ url_for('rrhh.generar_liquidacion') }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                        <div class="alert alert-info">
+                            <i class="bi bi-info-circle"></i> Se generarán liquidaciones para todos los empleados activos.
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="periodo" class="form-label">Período (YYYY-MM)</label>
+                            <input type="month" class="form-control form-control-lg" id="periodo" name="periodo" required>
+                        </div>
+
+                        <div class="card bg-light">
+                            <div class="card-body">
+                                <h5 class="card-title">Detalles:</h5>
+                                <ul>
+                                    <li>Se calcularán los ingresos y descuentos</li>
+                                    <li>Se aplicará aporte IPS (9.625%)</li>
+                                    <li>Se generarán recibos PDF individuales</li>
+                                    <li>Se registrará en la bitácora</li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <div class="d-grid gap-2 mt-4">
+                            <button type="submit" class="btn btn-primary btn-lg">
+                                <i class="bi bi-check-circle"></i> Generar Liquidaciones
+                            </button>
+                            <a href="{{ url_for('rrhh.listar_liquidaciones') }}" class="btn btn-secondary">Cancelar</a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Establecer período actual por defecto
+document.getElementById('periodo').valueAsDate = new Date();
+</script>
+{% endblock %}

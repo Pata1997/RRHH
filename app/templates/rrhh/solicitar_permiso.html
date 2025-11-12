@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+
+{% block title %}Solicitar Permiso - Sistema RRHH{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <h2><i class="bi bi-file-earmark-plus"></i> Solicitar Permiso</h2>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-body">
+                    <form method="POST" action="{{ url_for('rrhh.solicitar_permiso') }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                        <div class="mb-3">
+                            <label for="empleado_id" class="form-label">Empleado</label>
+                            <select class="form-control" id="empleado_id" name="empleado_id" required>
+                                <option value="">Seleccionar empleado</option>
+                                {% for emp in empleados %}
+                                <option value="{{ emp.id }}">{{ emp.nombre_completo }} ({{ emp.codigo }})</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="tipo_permiso" class="form-label">Tipo de Permiso</label>
+                            <select class="form-control" id="tipo_permiso" name="tipo_permiso" required>
+                                <option value="">Seleccionar</option>
+                                <option value="Por día">Por día</option>
+                                <option value="Por Accidente Laboral">Por Accidente Laboral</option>
+                                <option value="Se anula">Se anula</option>
+                                <option value="Enfermedad">Enfermedad</option>
+                                <option value="Asunto Personal">Asunto Personal</option>
+                                <option value="Calamidad Doméstica">Calamidad Doméstica</option>
+                                <option value="Cita Médica">Cita Médica</option>
+                                <option value="Otro">Otro</option>
+                            </select>
+                        </div>
+
+                        <div class="form-check mb-3">
+                            <input class="form-check-input" type="checkbox" value="1" id="con_goce" name="con_goce">
+                            <label class="form-check-label" for="con_goce">
+                                Con goce salarial (no generar descuento)
+                            </label>
+                        </div>
+
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label for="fecha_inicio" class="form-label">Fecha Inicio</label>
+                                <input type="date" class="form-control" id="fecha_inicio" name="fecha_inicio" required>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="fecha_fin" class="form-label">Fecha Fin</label>
+                                <input type="date" class="form-control" id="fecha_fin" name="fecha_fin" required>
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="motivo" class="form-label">Motivo</label>
+                            <textarea class="form-control" id="motivo" name="motivo" rows="3" required></textarea>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="observaciones" class="form-label">Observaciones</label>
+                            <textarea class="form-control" id="observaciones" name="observaciones" rows="2"></textarea>
+                        </div>
+
+                        <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                            <a href="{{ url_for('rrhh.listar_permisos') }}" class="btn btn-secondary">Cancelar</a>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="bi bi-check-circle"></i> Solicitar Permiso
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

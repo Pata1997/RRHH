@@ -1,0 +1,181 @@
+{% extends "base.html" %}
+
+{% block title %}Liquidación por Despido{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2 class="mb-4">
+        <i class="fas fa-file-contract"></i> Liquidación por Despido
+    </h2>
+    
+    <!-- Datos del Empleado -->
+    <div class="card mb-4 shadow-sm">
+        <div class="card-header bg-primary text-white">
+            <h5 class="mb-0">Datos del Empleado</h5>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-6">
+                    <p><strong>Nombre:</strong> <span class="badge bg-light text-dark">{{ empleado.nombre }}</span></p>
+                    <p><strong>Cédula:</strong> {{ empleado.cedula }}</p>
+                    <p><strong>Cargo:</strong> {{ empleado.cargo.nombre if empleado.cargo else '---' }}</p>
+                </div>
+                <div class="col-md-6">
+                    <p><strong>Salario Base:</strong> 
+                        <span class="badge bg-success">
+                            {{ "%.2f"|format(empleado.salario_base) }} Gs.
+                        </span>
+                    </p>
+                    <p><strong>Fecha Contratación:</strong> {{ empleado.fecha_contratacion.strftime('%d/%m/%Y') }}</p>
+                    <p><strong>Antigüedad:</strong> <strong class="text-info">{{ antiguedad }} años</strong></p>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Datos del Despido -->
+    <div class="card mb-4 shadow-sm">
+        <div class="card-header {% if despido.tipo == 'justificado' %}bg-success{% else %}bg-danger{% endif %} text-white">
+            <h5 class="mb-0">Datos del Despido</h5>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-6">
+                    <p>
+                        <strong>Tipo:</strong> 
+                        <span class="badge {% if despido.tipo == 'justificado' %}bg-success{% else %}bg-danger{% endif %}">
+                            {{ despido.tipo.upper() }}
+                        </span>
+                    </p>
+                    <p><strong>Causal:</strong> 
+                        <span class="badge bg-info">
+                            {{ despido.causal.upper() if despido.causal else 'N/A' }}
+                        </span>
+                    </p>
+                </div>
+                <div class="col-md-6">
+                    <p><strong>Fecha Despido:</strong> <strong>{{ despido.fecha_despido.strftime('%d/%m/%Y') }}</strong></p>
+                    <p><strong>Registrado por:</strong> {{ despido.usuario.nombre_completo if despido.usuario else '---' }}</p>
+                </div>
+            </div>
+            {% if despido.descripcion %}
+            <div class="alert alert-info mt-3">
+                <strong>Descripción:</strong><br>
+                {{ despido.descripcion }}
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    
+    <!-- Cálculo de Liquidación (Tabla de Rubros) -->
+    <div class="card mb-4 shadow-sm">
+        <div class="card-header bg-dark text-white">
+            <h5 class="mb-0">Cálculo de Liquidación</h5>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead class="table-light">
+                        <tr>
+                            <th style="width: 60%;">RUBRO</th>
+                            <th style="width: 40%;" class="text-end">MONTO</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>
+                                <strong>Indemnización por Antigüedad</strong>
+                                <br>
+                                <small class="text-muted">
+                                    {% if despido.tipo == 'justificado' %}
+                                        (Justificado = Sin indemnización)
+                                    {% else %}
+                                        (Injustificado: 1 mes + {{ antiguedad }} meses = {{ [1 + antiguedad, 12]|min }} meses)
+                                    {% endif %}
+                                </small>
+                            </td>
+                            <td class="text-end">
+                                <strong>{{ "%.2f"|format(liquidacion.indemnizacion_monto) }} Gs.</strong>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>
+                                <strong>Aguinaldo (13º Sueldo) Proporcional</strong>
+                                <br>
+                                <small class="text-muted">(Proporción del año trabajado)</small>
+                            </td>
+                            <td class="text-end">
+                                <strong>{{ "%.2f"|format(liquidacion.aguinaldo_monto) }} Gs.</strong>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td>
+                                <strong>Vacaciones No Gozadas</strong>
+                                <br>
+                                <small class="text-muted">(Días acumulados × salario/30)</small>
+                            </td>
+                            <td class="text-end">
+                                <strong>{{ "%.2f"|format(liquidacion.vacaciones_monto) }} Gs.</strong>
+                            </td>
+                        </tr>
+                        <tr class="table-active" style="background-color: #f0f0f0;">
+                            <td><strong>SUBTOTAL</strong></td>
+                            <td class="text-end">
+                                <strong>
+                                    {{ "%.2f"|format(
+                                        liquidacion.indemnizacion_monto + 
+                                        liquidacion.aguinaldo_monto + 
+                                        liquidacion.vacaciones_monto
+                                    ) }} Gs.
+                                </strong>
+                            </td>
+                        </tr>
+                        <tr class="text-danger">
+                            <td>
+                                <strong>(-) Aporte IPS del Empleado (9%)</strong>
+                                <br>
+                                <small class="text-muted">(Aporte de seguridad social)</small>
+                            </td>
+                            <td class="text-end">
+                                <strong>-{{ "%.2f"|format(liquidacion.aportes_ips_despido) }} Gs.</strong>
+                            </td>
+                        </tr>
+                        <tr style="background-color: #d4edda; font-size: 1.1em;">
+                            <td><strong>TOTAL NETO A PAGAR</strong></td>
+                            <td class="text-end">
+                                <strong class="text-success">
+                                    {{ "%.2f"|format(liquidacion.salario_neto) }} Gs.
+                                </strong>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Acciones -->
+    <div class="d-flex gap-2 mb-4">
+        <a href="{{ url_for('rrhh.descargar_pdf_liquidacion_despido', liquidacion_id=liquidacion.id) }}" 
+           class="btn btn-primary btn-lg">
+            <i class="fas fa-file-pdf"></i> Descargar PDF
+        </a>
+        <a href="{{ url_for('rrhh.listar_empleados') }}" class="btn btn-secondary btn-lg">
+            <i class="fas fa-arrow-left"></i> Volver
+        </a>
+    </div>
+    
+    <!-- Info legal -->
+    <div class="alert alert-light border-start border-warning">
+        <strong>⚠️ Nota Legal:</strong><br>
+        Esta liquidación se basa en el Código Laboral Paraguayo. Se recomienda revisar con asesoría legal especializada, 
+        especialmente en casos de despidos justificados, para garantizar el cumplimiento de todos los requisitos legales.
+    </div>
+</div>
+
+<style>
+    .table-hover tbody tr:hover {
+        background-color: #f5f5f5;
+    }
+</style>
+{% endblock %}

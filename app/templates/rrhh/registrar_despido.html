@@ -1,0 +1,231 @@
+{% extends "base.html" %}
+
+{% block title %}Registrar Despido{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-md-8">
+            <h2 class="mb-4">
+                <i class="fas fa-user-slash"></i> Registrar Despido de Empleado
+            </h2>
+            
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <form method="POST" class="needs-validation" id="formDespido">
+                        {{ csrf_token() }}
+                        
+                        <!-- Seleccionar empleado -->
+                        <div class="form-group mb-3">
+                            <label for="empleado_id" class="form-label fw-bold">Empleado</label>
+                            <select id="empleado_id" name="empleado_id" class="form-control" required onchange="cargar_datos_empleado()">
+                                <option value="">-- Seleccionar empleado --</option>
+                                {% for emp in empleados %}
+                                    <option value="{{ emp.id }}" data-salario="{{ emp.salario_base }}" data-fecha-ingreso="{{ emp.fecha_ingreso.strftime('%Y-%m-%d') if emp.fecha_ingreso else '' }}">
+                                        {{ emp.nombre }} ({{ emp.ci }})
+                                    </option>
+                                {% endfor %}
+                            </select>
+                            <small class="form-text text-muted">Selecciona un empleado activo</small>
+                        </div>
+                        
+                        <!-- Datos del empleado (información) -->
+                        <div id="div_datos_empleado" style="display:none;" class="alert alert-info mb-3">
+                                                <p><strong>Antigüedad:</strong> <span id="span_antiguedad">---</span> años</p>
+                                                <p><strong>Salario Base:</strong> <span id="span_salario">---</span></p>
+                                                <p><strong>Fecha Ingreso:</strong> <span id="span_fecha_ingreso">---</span></p>
+                                            </div>
+                        
+                        <!-- Tipo de despido -->
+                        <div class="form-group mb-3">
+                            <label for="tipo" class="form-label fw-bold">Tipo de Despido</label>
+                            <select id="tipo" name="tipo" class="form-control" required onchange="mostrar_causal(); calcular_indemnizacion();">
+                                <option value="">-- Seleccionar --</option>
+                                <option value="justificado">
+                                    ✓ Justificado (Con Causa Legal)
+                                </option>
+                                <option value="injustificado">
+                                    ✗ Injustificado (Sin Causa / Arbitrario)
+                                </option>
+                            </select>
+                            <small class="form-text text-muted">Define si hay causal legal válida</small>
+                        </div>
+                        
+                        <!-- Causal (si justificado) -->
+                        <div class="form-group mb-3" id="div_causal" style="display:none;">
+                            <label for="causal" class="form-label fw-bold">Causal Legal (Justificado)</label>
+                            <select id="causal" name="causal" class="form-control" onchange="calcular_indemnizacion();">
+                                <option value="">-- Seleccionar causal --</option>
+                                {% for codigo, label in causales %}
+                                    <option value="{{ codigo }}">{{ label }}</option>
+                                {% endfor %}
+                            </select>
+                            <small class="form-text text-muted">Causal legal que justifica el despido (Art. 79 Código Laboral)</small>
+                        </div>
+                        
+                        <!-- Descripción -->
+                        <div class="form-group mb-3">
+                            <label for="descripcion" class="form-label fw-bold">Descripción / Razones</label>
+                            <textarea id="descripcion" name="descripcion" class="form-control" rows="4" placeholder="Detalla brevemente las razones del despido..."></textarea>
+                            <small class="form-text text-muted">Campo opcional pero recomendado para auditoría</small>
+                        </div>
+                        
+                        <!-- Vista previa de cálculos -->
+                        <div id="div_preview_calculos" style="display:none;" class="alert alert-light border-info">
+                            <h5 class="mb-3">📊 Preview de Cálculos</h5>
+                            <table class="table table-sm table-borderless">
+                                <tr>
+                                    <td><strong>Indemnización:</strong></td>
+                                    <td class="text-end"><span id="preview_indemnizacion">$0.00</span></td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Aguinaldo (13º):</strong></td>
+                                    <td class="text-end"><span id="preview_aguinaldo">$0.00</span></td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Vacaciones:</strong></td>
+                                    <td class="text-end"><span id="preview_vacaciones">$0.00</span></td>
+                                </tr>
+                                <tr class="table-active">
+                                    <td><strong>Subtotal:</strong></td>
+                                    <td class="text-end"><strong><span id="preview_subtotal">$0.00</span></strong></td>
+                                </tr>
+                                <tr>
+                                    <td><strong>(-) Aporte IPS (9%):</strong></td>
+                                    <td class="text-end"><span id="preview_ips">-$0.00</span></td>
+                                </tr>
+                                <tr style="background-color: #d4edda;">
+                                    <td><strong>TOTAL NETO:</strong></td>
+                                    <td class="text-end"><strong style="font-size:1.2em;"><span id="preview_neto">$0.00</span></strong></td>
+                                </tr>
+                            </table>
+                        </div>
+                        
+                        <!-- Botones -->
+                        <div class="d-flex gap-2">
+                            <button type="submit" class="btn btn-danger btn-lg">
+                                <i class="fas fa-check-circle"></i> Registrar Despido y Generar Liquidación
+                            </button>
+                            <a href="{{ url_for('rrhh.listar_empleados') }}" class="btn btn-secondary btn-lg">
+                                <i class="fas fa-times-circle"></i> Cancelar
+                            </a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Panel de información -->
+        <div class="col-md-4">
+            <div class="card bg-light mb-3">
+                <div class="card-body">
+                    <h5 class="card-title">ℹ️ Tipos de Despido</h5>
+                    <hr>
+                    <h6 class="text-success">✓ Justificado</h6>
+                    <p class="small">Tiene causa legal válida. Indemnización = $0. Requiere demostración ante autoridades.</p>
+                    
+                    <h6 class="text-danger">✗ Injustificado</h6>
+                    <p class="small">Sin causa o causa insuficiente. Indemnización = 1 mes + 1 mes por año (máx 12 meses).</p>
+                </div>
+            </div>
+            
+            <div class="card bg-light">
+                <div class="card-body">
+                    <h5 class="card-title">💰 Componentes de Liquidación</h5>
+                    <hr>
+                    <ul class="small list-unstyled">
+                        <li><strong>Indemnización:</strong> Depende del tipo de despido y antigüedad</li>
+                        <li><strong>Aguinaldo:</strong> Proporción del 13º sueldo (años trabajados/12)</li>
+                        <li><strong>Vacaciones:</strong> Días no gozados × (salario/30)</li>
+                        <li><strong>Aportes IPS:</strong> 9% del total (empleado)</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function cargar_datos_empleado() {
+    const select = document.getElementById('empleado_id');
+    const option = select.options[select.selectedIndex];
+    
+    if (option.value === '') {
+        document.getElementById('div_datos_empleado').style.display = 'none';
+        return;
+    }
+    
+    const salario = parseFloat(option.getAttribute('data-salario'));
+    const fechaContrata = new Date(option.getAttribute('data-fecha-ingreso'));
+    const hoy = new Date();
+    
+    // Calcular antigüedad en años
+    const antiguedad = Math.floor((hoy - fechaContrata) / (365.25 * 24 * 60 * 60 * 1000));
+    
+    document.getElementById('span_antiguedad').textContent = antiguedad;
+    document.getElementById('span_salario').textContent = '$' + salario.toLocaleString('es-PY', {minimumFractionDigits: 2});
+    document.getElementById('span_fecha_ingreso').textContent = fechaContrata.toLocaleDateString('es-PY');
+    document.getElementById('div_datos_empleado').style.display = 'block';
+    
+    calcular_indemnizacion();
+}
+
+function mostrar_causal() {
+    const tipo = document.getElementById('tipo').value;
+    const div_causal = document.getElementById('div_causal');
+    div_causal.style.display = (tipo === 'justificado') ? 'block' : 'none';
+}
+
+function calcular_indemnizacion() {
+    const select = document.getElementById('empleado_id');
+    const option = select.options[select.selectedIndex];
+    
+    if (option.value === '') return;
+    
+    const salario = parseFloat(option.getAttribute('data-salario'));
+    const fechaContrata = new Date(option.getAttribute('data-fecha-ingreso'));
+    const hoy = new Date();
+    const antiguedad = Math.floor((hoy - fechaContrata) / (365.25 * 24 * 60 * 60 * 1000));
+    const tipo = document.getElementById('tipo').value;
+    
+    let indemnizacion = 0;
+    
+    if (tipo === 'justificado') {
+        indemnizacion = 0;
+    } else if (tipo === 'injustificado') {
+        // 1 mes + 1 por año (máx 12 meses)
+        const meses = Math.min(1 + antiguedad, 12);
+        indemnizacion = meses * salario;
+    }
+    
+    // Aguinaldo proporcional (días trabajados en año / 30 / 12 × salario)
+    const inicioAño = new Date(hoy.getFullYear(), 0, 1);
+    const díasTrabajados = (hoy - inicioAño) / (24 * 60 * 60 * 1000) + 1;
+    const mesesTrabajados = díasTrabajados / 30;
+    const aguinaldo = (mesesTrabajados / 12) * salario;
+    
+    // Vacaciones: 2 días por mes trabajado
+    const vacacionesDías = (mesesTrabajados * 2);
+    const vacacionesMonto = (vacacionesDías / 30) * salario;
+    
+    // Subtotal
+    const subtotal = indemnizacion + aguinaldo + vacacionesMonto;
+    
+    // Aportes IPS (9%)
+    const aportes = subtotal * 0.09;
+    
+    // Neto
+    const neto = subtotal - aportes;
+    
+    // Mostrar preview
+    document.getElementById('preview_indemnizacion').textContent = '$' + indemnizacion.toLocaleString('es-PY', {minimumFractionDigits: 2});
+    document.getElementById('preview_aguinaldo').textContent = '$' + aguinaldo.toLocaleString('es-PY', {minimumFractionDigits: 2});
+    document.getElementById('preview_vacaciones').textContent = '$' + vacacionesMonto.toLocaleString('es-PY', {minimumFractionDigits: 2});
+    document.getElementById('preview_subtotal').textContent = '$' + subtotal.toLocaleString('es-PY', {minimumFractionDigits: 2});
+    document.getElementById('preview_ips').textContent = '-$' + aportes.toLocaleString('es-PY', {minimumFractionDigits: 2});
+    document.getElementById('preview_neto').textContent = '$' + neto.toLocaleString('es-PY', {minimumFractionDigits: 2});
+    
+    document.getElementById('div_preview_calculos').style.display = 'block';
+}
+</script>
+{% endblock %}

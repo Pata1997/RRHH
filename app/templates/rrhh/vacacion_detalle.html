@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+
+{% block title %}Historial Vacaciones - {{ empleado.nombre_completo }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row mb-3">
+        <div class="col-md-8">
+            <h3><i class="bi bi-person-badge"></i> Historial de Vacaciones: {{ empleado.nombre_completo }}</h3>
+            <p class="text-muted">Código: <strong>{{ empleado.codigo }}</strong></p>
+        </div>
+        <div class="col-md-4 text-end">
+            <a href="{{ url_for('rrhh.listar_vacaciones') }}" class="btn btn-secondary">← Volver</a>
+        </div>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-header">
+            <strong>Solicitudes pendientes</strong>
+        </div>
+        <div class="card-body">
+            {% if pendientes %}
+                <div class="list-group">
+                {% for p in pendientes %}
+                    <div class="list-group-item">
+                        <div class="d-flex w-100 justify-content-between">
+                            <h5 class="mb-1">Periodo: {{ p.año }}</h5>
+                            <small class="text-warning">Estado: {{ p.estado.value }}</small>
+                        </div>
+                        <p class="mb-1">Fechas solicitadas: {{ p.fecha_inicio_solicitud.strftime('%d/%m/%Y') if p.fecha_inicio_solicitud else '-' }} - {{ p.fecha_fin_solicitud.strftime('%d/%m/%Y') if p.fecha_fin_solicitud else '-' }}</p>
+                        {% if p.fecha_inicio_solicitud and p.fecha_fin_solicitud %}
+                        <p class="mb-1">Días solicitados: {{ (p.fecha_fin_solicitud - p.fecha_inicio_solicitud).days + 1 }}</p>
+                        {% else %}
+                        <p class="mb-1">Días solicitados: -</p>
+                        {% endif %}
+                        <div>
+                            <form action="{{ url_for('rrhh.aprobar_vacacion', vacacion_id=p.id) }}" method="POST" style="display:inline;">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                <button type="submit" class="btn btn-sm btn-success">Aprobar</button>
+                            </form>
+                            <form action="{{ url_for('rrhh.rechazar_vacacion', vacacion_id=p.id) }}" method="POST" style="display:inline;">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                                <button type="submit" class="btn btn-sm btn-danger">Rechazar</button>
+                            </form>
+                            <a href="{{ url_for('rrhh.imprimir_solicitud_vacacion_directa', empleado_id=empleado.id) }}?vacacion_id={{ p.id }}" class="btn btn-sm btn-outline-secondary ms-2">Imprimir</a>
+                            <span class="d-none pendiente-option" data-id="{{ p.id }}">Solicitud {{ p.año }}: {{ (p.fecha_fin_solicitud - p.fecha_inicio_solicitud).days + 1 if p.fecha_inicio_solicitud and p.fecha_fin_solicitud else 0 }} días</span>
+                        </div>
+                    </div>
+                {% endfor %}
+                </div>
+            {% else %}
+                <p class="text-muted">No hay solicitudes pendientes para este empleado.</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <strong>Historial completo de vacaciones</strong>
+        </div>
+        <div class="card-body">
+            {% if vacaciones %}
+                <table class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>Año</th>
+                            <th>Disponibles</th>
+                            <th>Tomados</th>
+                            <th>Pendientes</th>
+                            <th>Fecha Inicio Solicitud</th>
+                            <th>Fecha Fin Solicitud</th>
+                            <th>Estado</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for v in vacaciones %}
+                        <tr>
+                            <td>{{ v.año }}</td>
+                            <td>{{ v.dias_disponibles }}</td>
+                            <td>{{ v.dias_tomados }}</td>
+                            <td>{{ v.dias_pendientes }}</td>
+                            <td>{{ v.fecha_inicio_solicitud or '-' }}</td>
+                            <td>{{ v.fecha_fin_solicitud or '-' }}</td>
+                            <td>
+                                <span class="badge bg-{{ 'success' if v.estado.name == 'APROBADA' else 'warning' if v.estado.name == 'PENDIENTE' else 'danger' }}">{{ v.estado.value }}</span>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            {% else %}
+                <p class="text-muted">No hay historial de vacaciones para este empleado.</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

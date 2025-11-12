@@ -1,0 +1,123 @@
+# ⚡ RESUMEN EJECUTIVO - PRUEBAS DEL SISTEMA
+
+## 🎯 OBJETIVO
+
+Probar módulos de **Despidos**, **Aguinaldos** y **Descuentos/Sanciones** con datos realistas.
+
+---
+
+## 📋 PASOS (5 MINUTOS)
+
+### 1️⃣ Migración BD (30 seg)
+
+```powershell
+cd "c:\Users\Informatica 1\Desktop\Proyectos\RRHH2"
+python migrations/add_despido_table.py
+```
+
+### 2️⃣ Datos Prueba (30 seg)
+
+```powershell
+python scripts/generar_datos_prueba.py
+```
+
+Genera:
+- 132 asistencias (octubre, 6 empleados, 22 días)
+- 3 descuentos manuales (10% salario)
+- 3 sanciones (con descuentos automáticos)
+
+### 3️⃣ Iniciar App (30 seg)
+
+```powershell
+python run.py
+```
+
+Abre: `http://localhost:5000`
+
+Login como RRHH
+
+### 4️⃣ Probar (3 min)
+
+**A) Liquidación de Octubre:**
+```
+Menú → Nómina → Generar
+Período: 2025-10
+Generar
+✓ 6 liquidaciones con descuentos
+```
+
+**B) Registrar Despido:**
+```
+Menú → Nómina → Registrar Despido
+Selecciona empleado
+Tipo: Injustificado
+Registrar
+✓ Cálculos automáticos + PDF
+```
+
+**C) Generar Aguinaldos:**
+```
+Menú → Nómina → Generar Aguinaldo
+Año: 2025
+Previsualizar → Generar
+✓ 6 aguinaldos generados
+```
+
+---
+
+## 📊 DATOS GENERADOS
+
+### Descuentos (Empleados 1-3)
+| Empleado | Descuento |
+|----------|-----------|
+| Juan | -200,000 Gs. (10% salario) |
+| María | -150,000 Gs. (10% salario) |
+| Pedro | -180,000 Gs. (10% salario) |
+
+### Sanciones (Empleados 4-6)
+| Empleado | Sanción | Descuento |
+|----------|---------|-----------|
+| Ana | Suspensión (5 días) | -333,333 Gs. |
+| Luis | Amonestación (3 días) | -160,000 Gs. |
+| Rosa | Falta grave (2 días) | -93,333 Gs. |
+
+---
+
+## ✅ VERIFICAR
+
+- [ ] Migración ejecutada exitosamente
+- [ ] Datos de prueba generados
+- [ ] App inicia sin errores
+- [ ] Liquidación octubre muestra descuentos
+- [ ] Despido calcula todos los rubros
+- [ ] Aguinaldos se generan correctamente
+- [ ] PDFs descargan sin problemas
+- [ ] Bitácora registra todas las acciones
+
+---
+
+## 🎁 RESULTADO ESPERADO
+
+Tras completar:
+
+```
+✓ 6 liquidaciones mensuales (oct) con descuentos/sanciones
+✓ 1 liquidación de despido (indemnización + aguinaldo + vacaciones)
+✓ 6 aguinaldos anuales (2025)
+✓ PDFs de todos los anteriores
+✓ Historial en Bitácora
+✓ Sistema completamente funcional
+```
+
+---
+
+## 📚 DOCUMENTOS
+
+- `GUIA_COMPLETA_PROBAR_SISTEMA.md` - Paso a paso detallado
+- `GUIA_GENERAR_DATOS_PRUEBA.md` - Script de datos
+- `NAVEGACION_AGUINALDOS_VISUAL.md` - Pantallas visuales
+- `AGUINALDOS_MANUAL_RAPIDO.md` - Guía aguinaldos
+
+---
+
+**¡Listo para empezar! 🚀**

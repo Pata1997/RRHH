@@ -1,0 +1,178 @@
+{% extends 'base.html' %}
+
+{% block title %}Aguinaldos - Sistema RRHH{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="row mb-4">
+        <div class="col-md-8">
+            <h1>
+                <i class="bi bi-gift"></i> Aguinaldos
+            </h1>
+        </div>
+        <div class="col-md-4 text-end">
+            <a href="{{ url_for('rrhh.generar_aguinaldos') }}" class="btn btn-success">
+                <i class="bi bi-plus-circle"></i> Generar Nuevo
+            </a>
+        </div>
+    </div>
+
+    <!-- Filtro por año -->
+    <div class="row mb-3">
+        <div class="col-md-12">
+            <form method="GET" class="row g-2">
+                <div class="col-auto">
+                    <select name="año" class="form-select" onchange="this.form.submit()">
+                        {% for y in range(2024, 2030) %}
+                            <option value="{{ y }}" {% if y == año %}selected{% endif %}>{{ y }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Resumen de Totales -->
+    {% if totales and totales.cantidad > 0 %}
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card text-center shadow-sm">
+                <div class="card-body">
+                    <h6 class="text-muted">Empleados</h6>
+                    <h3>{{ totales.cantidad }}</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center shadow-sm border-success">
+                <div class="card-body">
+                    <h6 class="text-success">Aguinaldo Bruto</h6>
+                    <h4>{{ "%.0f"|format(totales.total_bruto) }}</h4>
+                    <small class="text-muted">Gs.</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center shadow-sm border-warning">
+                <div class="card-body">
+                    <h6 class="text-warning">(-) IPS 9%</h6>
+                    <h4>{{ "%.0f"|format(totales.total_ips) }}</h4>
+                    <small class="text-muted">Gs.</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center shadow-sm border-info">
+                <div class="card-body">
+                    <h6 class="text-info">Neto a Pagar</h6>
+                    <h4 class="text-info">{{ "%.0f"|format(totales.total_neto) }}</h4>
+                    <small class="text-muted">Gs.</small>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Tabla de Aguinaldos -->
+    <div class="row">
+        <div class="col-md-12">
+            <div class="card shadow-sm">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0">Aguinaldos del Año {{ año }}</h5>
+                </div>
+                <div class="card-body">
+                    {% if aguinaldos.items %}
+                    <div class="table-responsive">
+                        <table class="table table-hover table-striped">
+                            <thead class="table-dark">
+                                <tr>
+                                    <th>Empleado</th>
+                                    <th>Cédula</th>
+                                    <th>Cargo</th>
+                                    <th class="text-end">Salario Base</th>
+                                    <th class="text-end">Aguinaldo Bruto</th>
+                                    <th class="text-end">(-) IPS 9%</th>
+                                    <th class="text-end">Neto</th>
+                                    <th>Período</th>
+                                    <th class="text-center">Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for item in aguinaldos.items %}
+                                <tr>
+                                    <td><strong>{{ item.empleado.nombre_completo }}</strong></td>
+                                    <td><small>{{ item.empleado.ci }}</small></td>
+                                    <td>{{ item.empleado.cargo.nombre }}</td>
+                                    <td class="text-end">{{ "%.0f"|format(item.salario_base) }}</td>
+                                    <td class="text-end"><span class="badge bg-success">{{ "%.0f"|format(item.aguinaldo_monto) }}</span></td>
+                                    <td class="text-end text-warning">{{ "%.0f"|format(item.aportes_ips_despido) }}</td>
+                                    <td class="text-end"><strong class="text-info">{{ "%.0f"|format(item.salario_neto) }}</strong></td>
+                                    <td><span class="badge bg-secondary">{{ item.periodo }}</span></td>
+                                    <td class="text-center">
+                                        <a href="{{ url_for('rrhh.descargar_recibo_pdf', liquidacion_id=item.id) }}" 
+                                           class="btn btn-sm btn-outline-primary" title="Descargar recibo PDF">
+                                            <i class="bi bi-file-pdf"></i>
+                                        </a>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Paginación -->
+                    {% if aguinaldos.pages > 1 %}
+                    <nav aria-label="Page navigation" class="mt-3">
+                        <ul class="pagination justify-content-center">
+                            {% if aguinaldos.has_prev %}
+                            <li class="page-item">
+                                <a class="page-link" href="{{ url_for('rrhh.listar_aguinaldos', página=aguinaldos.prev_num, año=año) }}">
+                                    Anterior
+                                </a>
+                            </li>
+                            {% endif %}
+
+                            {% for page_num in aguinaldos.iter_pages() %}
+                                {% if page_num %}
+                                    {% if page_num == aguinaldos.page %}
+                                    <li class="page-item active">
+                                        <a class="page-link">{{ page_num }}</a>
+                                    </li>
+                                    {% else %}
+                                    <li class="page-item">
+                                        <a class="page-link" href="{{ url_for('rrhh.listar_aguinaldos', page=page_num, año=año) }}">
+                                            {{ page_num }}
+                                        </a>
+                                    </li>
+                                    {% endif %}
+                                {% else %}
+                                <li class="page-item disabled">
+                                    <span class="page-link">...</span>
+                                </li>
+                                {% endif %}
+                            {% endfor %}
+
+                            {% if aguinaldos.has_next %}
+                            <li class="page-item">
+                                <a class="page-link" href="{{ url_for('rrhh.listar_aguinaldos', page=aguinaldos.next_num, año=año) }}">
+                                    Siguiente
+                                </a>
+                            </li>
+                            {% endif %}
+                        </ul>
+                    </nav>
+                    {% endif %}
+                    {% else %}
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle"></i>
+                        No hay aguinaldos generados para el año {{ año }}.
+                        <a href="{{ url_for('rrhh.generar_aguinaldos') }}" class="alert-link">Generar aguinaldos</a>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+{% endblock %}

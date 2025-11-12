@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+
+{% block title %}Crear Sanción - Sistema RRHH{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <h2><i class="bi bi-exclamation-circle-fill"></i> Registrar Sanción</h2>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-body">
+                    <form method="POST" action="{{ url_for('rrhh.crear_sancion') }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                        <div class="mb-3">
+                            <label for="empleado_id" class="form-label">Empleado</label>
+                            <select class="form-control" id="empleado_id" name="empleado_id" required>
+                                <option value="">Seleccionar empleado</option>
+                                {% for emp in empleados %}
+                                <option value="{{ emp.id }}">{{ emp.nombre_completo }} ({{ emp.codigo }})</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="tipo_sancion" class="form-label">Tipo de Sanción</label>
+                            <select class="form-control" id="tipo_sancion" name="tipo_sancion" required>
+                                <option value="">Seleccionar</option>
+                                <option value="Amonestación Verbal">Amonestación Verbal</option>
+                                <option value="Amonestación Escrita">Amonestación Escrita</option>
+                                <option value="Descuento Salarial">Descuento Salarial</option>
+                                <option value="Suspensión">Suspensión</option>
+                                <option value="Otro">Otro</option>
+                            </select>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="fecha" class="form-label">Fecha</label>
+                            <input type="date" class="form-control" id="fecha" name="fecha" required>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="monto" class="form-label">Monto (si aplica)</label>
+                            <div class="input-group">
+                                <span class="input-group-text">₲</span>
+                                <input type="number" class="form-control" id="monto" name="monto" step="0.01" value="0">
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="dias_suspension" class="form-label">Días de suspensión (si aplica)</label>
+                            <input type="number" class="form-control" id="dias_suspension" name="dias_suspension" min="0" value="0">
+                            <div class="form-text">Si la sanción es 'Suspensión', indicar cuántos días. El sistema calculará el descuento automático.</div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="motivo" class="form-label">Motivo</label>
+                            <textarea class="form-control" id="motivo" name="motivo" rows="3" required></textarea>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="descripcion" class="form-label">Descripción</label>
+                            <textarea class="form-control" id="descripcion" name="descripcion" rows="2"></textarea>
+                        </div>
+
+                        <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                            <a href="{{ url_for('rrhh.listar_sanciones') }}" class="btn btn-secondary">Cancelar</a>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="bi bi-check-circle"></i> Registrar Sanción
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

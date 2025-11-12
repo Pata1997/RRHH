@@ -1,0 +1,203 @@
+{% extends 'base.html' %}
+
+{% block title %}Generar Aguinaldos - Sistema RRHH{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-md-12">
+            <h1 class="mb-4">
+                <i class="bi bi-gift"></i> Generar Aguinaldos Anuales
+            </h1>
+        </div>
+    </div>
+
+    <!-- Formulario de Generación -->
+    <div class="row mb-4">
+        <div class="col-md-8">
+            <div class="card shadow-sm">
+                <div class="card-header bg-info text-white">
+                    <h5 class="mb-0"><i class="bi bi-calendar"></i> Configurar Generación</h5>
+                </div>
+                <div class="card-body">
+                    <form method="POST" id="formAguinaldo">
+                        <div class="row">
+                            <div class="col-md-4">
+                                <div class="mb-3">
+                                    <label for="año" class="form-label">Año</label>
+                                    <select class="form-select" id="año" name="año" required>
+                                        {% for año_opt in años_disponibles %}
+                                            <option value="{{ año_opt }}" {% if año_opt == año_actual %}selected{% endif %}>
+                                                {{ año_opt }}
+                                            </option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="mb-3">
+                                    <label for="mes_corte" class="form-label">Mes de Pago</label>
+                                    <select class="form-select" id="mes_corte" name="mes_corte">
+                                        <option value="12" selected>Diciembre (12)</option>
+                                        <option value="6">Junio (6)</option>
+                                        <option value="11">Noviembre (11)</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="mb-3">
+                                    <label for="día_corte" class="form-label">Día de Pago</label>
+                                    <input type="number" class="form-control" id="día_corte" name="día_corte" value="31" min="1" max="31">
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-12">
+                                <div class="btn-group" role="group">
+                                    <button type="submit" name="acción" value="preview" class="btn btn-info">
+                                        <i class="bi bi-eye"></i> Previsualizar
+                                    </button>
+                                    <button type="submit" name="acción" value="generar" class="btn btn-success" id="btnGenerar">
+                                        <i class="bi bi-check-circle"></i> Generar Aguinaldos
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Información -->
+        <div class="col-md-4">
+            <div class="card shadow-sm bg-light">
+                <div class="card-body">
+                    <h6 class="card-title"><i class="bi bi-info-circle"></i> Información</h6>
+                    <ul class="small list-unstyled">
+                        <li class="mb-2">
+                            <strong>¿Qué es?</strong><br>
+                            Genera el pago del aguinaldo (13º sueldo) para todos los empleados activos.
+                        </li>
+                        <li class="mb-2">
+                            <strong>¿Cómo se calcula?</strong><br>
+                            Aguinaldo = (Meses trabajados / 12) × Salario Base
+                        </li>
+                        <li>
+                            <strong>Descuentos:</strong> Se aplica 9% de IPS automáticamente.
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Preview Results -->
+    {% if resultado %}
+        {% if resultado.tipo == 'preview' %}
+        <div class="row mb-4">
+            <div class="col-md-12">
+                <div class="card shadow-sm border-info">
+                    <div class="card-header bg-info text-white">
+                        <h5 class="mb-0"><i class="bi bi-eye"></i> Vista Previa - {{ resultado.año }} (Fecha corte: {{ resultado.fecha_corte }})</h5>
+                    </div>
+                    <div class="card-body">
+                        <!-- Resumen -->
+                        <div class="row mb-3">
+                            <div class="col-md-3">
+                                <div class="alert alert-primary text-center">
+                                    <h6>Empleados</h6>
+                                    <h3>{{ resultado.cantidad }}</h3>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="alert alert-success text-center">
+                                    <h6>Aguinaldo Bruto</h6>
+                                    <h3>{{ "%.0f"|format(resultado.total_bruto) }} Gs.</h3>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="alert alert-warning text-center">
+                                    <h6>(-) IPS 9%</h6>
+                                    <h3>{{ "%.0f"|format(resultado.total_ips) }} Gs.</h3>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="alert alert-info text-center">
+                                    <h6>Neto a Pagar</h6>
+                                    <h3>{{ "%.0f"|format(resultado.total_neto) }} Gs.</h3>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Tabla de Detalle -->
+                        <div class="table-responsive">
+                            <table class="table table-hover table-sm">
+                                <thead class="table-dark">
+                                    <tr>
+                                        <th>Empleado</th>
+                                        <th>Cargo</th>
+                                        <th class="text-end">Salario Base</th>
+                                        <th class="text-end">Meses</th>
+                                        <th class="text-end">Aguinaldo Bruto</th>
+                                        <th class="text-end">(-) IPS 9%</th>
+                                        <th class="text-end">Neto</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for item in resultado.datos %}
+                                    <tr>
+                                        <td>{{ item.empleado.nombre_completo }}</td>
+                                        <td><small>{{ item.empleado.cargo.nombre }}</small></td>
+                                        <td class="text-end">{{ "%.0f"|format(item.empleado.salario_base) }}</td>
+                                        <td class="text-end">{{ "%.2f"|format(item.meses) }}</td>
+                                        <td class="text-end"><strong>{{ "%.0f"|format(item.aguinaldo_bruto) }}</strong></td>
+                                        <td class="text-end text-warning"><strong>{{ "%.0f"|format(item.ips) }}</strong></td>
+                                        <td class="text-end text-success"><strong>{{ "%.0f"|format(item.aguinaldo_neto) }}</strong></td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div class="alert alert-info mt-3">
+                            <i class="bi bi-info-circle"></i>
+                            <strong>Revisar</strong> la información anterior. Si es correcta, presiona el botón "Generar Aguinaldos" para crear los registros.
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% elif resultado.tipo == 'generado' %}
+        <div class="row mb-4">
+            <div class="col-md-12">
+                <div class="alert alert-success alert-dismissible fade show" role="alert">
+                    <h4 class="alert-heading"><i class="bi bi-check-circle"></i> ¡Generación Exitosa!</h4>
+                    <ul class="mb-0">
+                        <li><strong>Empleados procesados:</strong> {{ resultado.generados }}</li>
+                        <li><strong>Duplicados evitados:</strong> {{ resultado.duplicados }}</li>
+                        <li><strong>Errores:</strong> {{ resultado.errores }}</li>
+                        <li><strong>Fecha de corte:</strong> {{ resultado.fecha_corte }}</li>
+                    </ul>
+                    <hr>
+                    <p class="mb-0">
+                        Los aguinaldos han sido registrados en el sistema. 
+                        <a href="{{ url_for('rrhh.listar_aguinaldos') }}" class="alert-link">Ver listado de aguinaldos</a>
+                    </p>
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    {% endif %}
+
+</div>
+
+<script>
+document.getElementById('btnGenerar').addEventListener('click', function(e) {
+    if (!confirm('¿Estás seguro de que deseas generar los aguinaldos?\nEsta acción no se puede deshacer inmediatamente.')) {
+        e.preventDefault();
+    }
+});
+</script>
+{% endblock %}

@@ -1,0 +1,344 @@
+===============================================
+🚀 GUÍA DE INSTALACIÓN Y EJECUCIÓN - SISTEMA RRHH
+===============================================
+
+📋 TABLA DE CONTENIDOS:
+1. Requisitos del Sistema
+2. Instalación Paso a Paso
+3. Configuración de PostgreSQL
+4. Ejecución de la Aplicación
+5. Acceso a la Aplicación
+6. Troubleshooting
+
+===============================================
+1️⃣ REQUISITOS DEL SISTEMA
+===============================================
+
+✓ Python 3.8 o superior
+✓ PostgreSQL 12 o superior
+✓ pip (incluido con Python)
+✓ Git (opcional)
+✓ Un editor de texto o IDE
+
+Verificar versiones:
+  python --version
+  psql --version
+
+
+===============================================
+2️⃣ INSTALACIÓN PASO A PASO (Windows)
+===============================================
+
+PASO 1: Navegar al directorio del proyecto
+┌─ Abrir PowerShell o CMD
+└─ cd C:\Users\Informatica 1\Desktop\Proyectos\RRHH2
+
+PASO 2: Crear entorno virtual
+┌─ python -m venv venv
+└─ ✓ Se crea carpeta 'venv'
+
+PASO 3: Activar entorno virtual
+┌─ venv\Scripts\activate
+└─ ✓ El prompt debe mostrar (venv)
+
+PASO 4: Actualizar pip (opcional pero recomendado)
+┌─ python -m pip install --upgrade pip
+└─ ✓ pip actualizado
+
+PASO 5: Instalar dependencias
+┌─ pip install -r requirements.txt
+└─ ✓ Se instalan todas las librerías necesarias
+
+PASO 6: Crear archivo .env
+┌─ Copiar .env.example a .env
+│  (Botón derecho en .env.example → Copiar → Pegar → Renombrar)
+└─ Editar .env con los datos correctos
+
+
+===============================================
+3️⃣ CONFIGURACIÓN DE POSTGRESQL
+===============================================
+
+PASO 1: Abrir PostgreSQL (pgAdmin o CLI)
+
+OPCIÓN A - Usando pgAdmin (interfaz gráfica):
+  1. Abrir pgAdmin
+  2. Clic en Servers → PostgreSQL → Databases
+  3. Clic derecho → Create → Database
+  4. Nombre: rrhh_db
+  5. Save
+
+OPCIÓN B - Usando SQL CLI:
+  psql -U postgres
+  
+  Luego ejecutar:
+  ─────────────────────────────────────────
+  CREATE DATABASE rrhh_db;
+  
+  CREATE USER rrhh_user WITH PASSWORD 'password123';
+  
+  ALTER ROLE rrhh_user SET client_encoding TO 'utf8';
+  ALTER ROLE rrhh_user SET default_transaction_isolation TO 'read committed';
+  ALTER ROLE rrhh_user SET default_transaction_deferrable TO on;
+  
+  GRANT ALL PRIVILEGES ON DATABASE rrhh_db TO rrhh_user;
+  
+  \q (para salir)
+  ─────────────────────────────────────────
+
+PASO 2: Actualizar archivo .env con credenciales:
+  DATABASE_URL=postgresql://rrhh_user:password123@localhost:5432/rrhh_db
+
+
+===============================================
+4️⃣ EJECUCIÓN DE LA APLICACIÓN
+===============================================
+
+PASO 1: Asegurar que el entorno virtual esté activado
+  ✓ El prompt debe mostrar (venv)
+
+PASO 2: Inicializar la base de datos con datos de prueba
+  python init_database.py
+  
+  ✓ Verás un mensaje: "✅ BASE DE DATOS INICIALIZADA CORRECTAMENTE"
+
+PASO 3: Ejecutar la aplicación
+  python run.py
+  
+  ✓ Verás algo como:
+  ─────────────────────────────────────────
+  * Running on http://127.0.0.1:5000
+  * Debug mode: on
+  ─────────────────────────────────────────
+
+LISTO! La aplicación está corriendo ✨
+
+
+===============================================
+5️⃣ ACCESO A LA APLICACIÓN
+===============================================
+
+Abrir navegador web en:
+📱 http://localhost:5000
+
+Usuarios disponibles:
+
+┌─ USUARIO 1: Administrador RRHH
+│  Usuario: admin
+│  Contraseña: admin123
+│  Rol: RRHH (acceso total)
+│
+└─ USUARIO 2: Asistente RRHH
+   Usuario: asistente
+   Contraseña: asistente123
+   Rol: Asistente RRHH (acceso limitado)
+
+
+PRIMEROS PASOS:
+  1. Ingresar con usuario: admin
+  2. Ver el Dashboard
+  3. Ir a "Empleados" → "Listar"
+  4. Crear un nuevo empleado
+  5. Ir a "Asistencia" y registrar entrada/salida
+  6. Generar liquidaciones en "Nómina" → "Generar"
+  7. Descargar PDF del recibo
+
+
+===============================================
+6️⃣ TROUBLESHOOTING
+===============================================
+
+❌ ERROR: "ModuleNotFoundError: No module named 'flask'"
+   ✓ Solución: pip install -r requirements.txt
+
+❌ ERROR: "psycopg2 connection refused"
+   ✓ Solución: 
+     - Verificar que PostgreSQL esté corriendo
+     - Verificar credenciales en .env
+     - Verificar host y puerto
+
+❌ ERROR: "Port 5000 is already in use"
+   ✓ Solución: 
+     - Cambiar puerto en run.py (última línea)
+     - O terminar proceso: netstat -ano | findstr 5000
+
+❌ ERROR: "No module named 'reportlab'"
+   ✓ Solución: pip install reportlab
+
+❌ ERROR al generar PDF: "No such file or directory: 'uploads'"
+   ✓ Solución: La carpeta se crea automáticamente, reintentar
+
+❌ ERROR: "Environment variable DATABASE_URL not set"
+   ✓ Solución: 
+     - Crear archivo .env en raíz del proyecto
+     - Agregar: DATABASE_URL=postgresql://...
+     - Reiniciar la aplicación
+
+❌ Base de datos vacía sin datos iniciales
+   ✓ Solución: 
+     - Ejecutar: python init_database.py
+     - Verificar que PostgreSQL esté corriendo
+
+
+===============================================
+📚 ESTRUCTURA DE ARCHIVOS IMPORTANTES
+===============================================
+
+RRHH2/
+├── app/
+│   ├── __init__.py           ← Factory de Flask
+│   ├── models.py             ← Modelos de BD
+│   ├── config.py             ← Configuración
+│   ├── bitacora.py           ← Auditoría
+│   ├── routes/
+│   │   ├── auth.py           ← Login/Logout
+│   │   ├── rrhh.py           ← Rutas principales
+│   │   └── main.py           ← Dashboard
+│   ├── reports/
+│   │   └── report_utils.py   ← Generación PDFs
+│   ├── templates/            ← HTML
+│   └── static/               ← CSS, JS, imágenes
+├── run.py                    ← Archivo principal
+├── init_database.py          ← Inicialización BD
+├── requirements.txt          ← Dependencias
+├── .env                      ← Variables de entorno
+├── README.md                 ← Documentación
+└── venv/                     ← Entorno virtual (creado)
+
+
+===============================================
+🎯 FUNCIONES PRINCIPALES POR MÓDULO
+===============================================
+
+AUTENTICACIÓN:
+  ✓ Login seguro
+  ✓ Logout
+  ✓ Cambio de contraseña
+  ✓ Roles: RRHH y Asistente RRHH
+
+EMPLEADOS:
+  ✓ Crear, editar, eliminar
+  ✓ Información personal y laboral
+  ✓ Estados (Activo, Inactivo, Suspendido)
+
+ASISTENCIA:
+  ✓ Registro por código de empleado
+  ✓ Entrada/salida automática
+  ✓ Edición manual
+
+NÓMINA:
+  ✓ Generación automática de liquidaciones
+  ✓ Cálculo de IPS (9.625%)
+  ✓ Recibos en PDF
+
+PERMISOS:
+  ✓ Solicitud de permisos
+  ✓ Aprobación/rechazo
+  ✓ Historial
+
+SANCIONES:
+  ✓ Registro de sanciones
+  ✓ Descuentos automáticos
+
+VACACIONES:
+  ✓ Solicitud de vacaciones
+  ✓ Seguimiento de días
+
+REPORTES:
+  ✓ Recibo individual (PDF)
+  ✓ Planilla mensual (PDF)
+  ✓ Contrato de trabajo (PDF)
+
+AUDITORÍA:
+  ✓ Bitácora de todas las acciones
+  ✓ Filtrado por usuario/módulo
+  ✓ IP, User Agent, timestamps
+
+
+===============================================
+💡 CONSEJOS ÚTILES
+===============================================
+
+1. Crear más empleados de prueba:
+   - Ir a Empleados → Nuevo Empleado
+   - Usar códigos secuenciales: EMP001, EMP002, etc.
+
+2. Para ver cambios en tiempo real:
+   - La aplicación se recarga automáticamente en modo desarrollo
+
+3. Acceder a la consola de depuración:
+   - Errores detallados se muestran en navegador
+   - Revisar consola de PowerShell para logs
+
+4. Desactivar modo debug en producción:
+   - En app/__init__.py cambiar debug=False
+
+5. Cambiar puerto si 5000 está ocupado:
+   - En run.py última línea: port=5001 (o el que prefieras)
+
+
+===============================================
+🔐 SEGURIDAD - RECOMENDACIONES
+===============================================
+
+⚠️ ANTES DE PRODUCCIÓN:
+
+1. Cambiar SECRET_KEY en .env
+   - Generar clave aleatoria de mínimo 32 caracteres
+   - Ejemplo: openssl rand -hex 32
+
+2. Cambiar contraseñas de usuarios
+   - Acceso desde: Dashboard → Usuario → Cambiar contraseña
+
+3. Configurar base de datos:
+   - Usar contraseña fuerte para PostgreSQL
+   - Limitar conexiones remotas
+
+4. Usar HTTPS:
+   - Instalar certificado SSL
+   - Usar Nginx o Apache como proxy inverso
+
+5. Variables de entorno:
+   - Nunca compartir .env
+   - Agregar a .gitignore
+   - Usar secretos del servidor en producción
+
+
+===============================================
+📞 SOPORTE Y PREGUNTAS
+===============================================
+
+Si encuentras errores:
+
+1. Verificar mensaje de error exacto
+2. Buscar en Google o StackOverflow
+3. Revisar los logs en la consola
+4. Verificar que todas las dependencias estén instaladas
+5. Reiniciar la aplicación
+
+
+===============================================
+✅ CHECKLIST FINAL
+===============================================
+
+Antes de empezar a trabajar, verifica:
+
+□ Python instalado y en PATH
+□ PostgreSQL corriendo
+□ Base de datos rrhh_db creada
+□ Usuario rrhh_user creado
+□ Entorno virtual activado (venv)
+□ Dependencias instaladas (pip install -r requirements.txt)
+□ Archivo .env creado y configurado
+□ Base de datos inicializada (python init_database.py)
+□ Aplicación corriendo (python run.py)
+□ Navegador accediendo a http://localhost:5000
+□ Login funcionando con admin/admin123
+
+¡Si todo está ok, estás listo para trabajar! 🎉
+
+
+===============================================
+Documento actualizado: Noviembre 2025
+Sistema de RRHH - Cooperativa
+===============================================

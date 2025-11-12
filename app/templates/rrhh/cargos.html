@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+
+{% block title %}Cargos - Sistema RRHH{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col-md-8">
+            <h2><i class="bi bi-briefcase"></i> Gestión de Cargos</h2>
+        </div>
+        <div class="col-md-4 text-end">
+            <a href="{{ url_for('rrhh.crear_cargo') }}" class="btn btn-primary">
+                <i class="bi bi-plus-circle"></i> Nuevo Cargo
+            </a>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-body">
+            <table class="table table-striped table-hover datatable">
+                <thead class="table-dark">
+                    <tr>
+                        <th>Nombre</th>
+                        <th>Descripción</th>
+                        <th>Salario Base</th>
+                        <th>Empleados</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for cargo in cargos %}
+                    <tr>
+                        <td><strong>{{ cargo.nombre }}</strong></td>
+                        <td>{{ cargo.descripcion or '-' }}</td>
+                        <td>₲ {{ "%.2f"|format(cargo.salario_base) }}</td>
+                        <td><span class="badge bg-info">{{ cargo.empleados|length }}</span></td>
+                        <td>
+                            <a href="{{ url_for('rrhh.editar_cargo', cargo_id=cargo.id) }}" class="btn btn-sm btn-warning">
+                                <i class="bi bi-pencil"></i>
+                            </a>
+                            <button class="btn btn-sm btn-danger" onclick="eliminarCargo({{ cargo.id }}, '{{ cargo.nombre }}')">
+                                <i class="bi bi-trash"></i>
+                            </button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<script>
+function eliminarCargo(id, nombre) {
+    Swal.fire({
+        title: '¿Eliminar cargo?',
+        text: `Se eliminará el cargo "${nombre}"`,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#d33',
+        cancelButtonColor: '#3085d6',
+        confirmButtonText: 'Eliminar'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.action = '{{ url_for("rrhh.eliminar_cargo", cargo_id=0) }}'.replace('0', id);
+            document.body.appendChild(form);
+            form.submit();
+        }
+    });
+}
+</script>
+{% endblock %}

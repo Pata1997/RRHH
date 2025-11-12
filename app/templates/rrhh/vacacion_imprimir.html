@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+
+{% block title %}Imprimir Solicitud de Vacaciones{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-md-8">
+            <h3><i class="bi bi-printer"></i> Imprimir pedido de vacaciones</h3>
+            <p class="text-muted">Seleccione el funcionario y la solicitud (si existe) o ingrese fechas manualmente para generar el formulario imprimible.</p>
+
+            <form method="POST" action="{{ url_for('rrhh.imprimir_solicitud_vacacion') }}">
+                <div class="mb-3">
+                    <label for="empleado_id" class="form-label">Empleado</label>
+                    <select id="empleado_id" name="empleado_id" class="form-control" required onchange="cargarSolicitudes(this.value)">
+                        <option value="">Seleccionar empleado</option>
+                        {% for emp in empleados %}
+                        <option value="{{ emp.id }}">{{ emp.nombre_completo }} ({{ emp.codigo }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="mb-3" id="pendientesDiv" style="display:none;">
+                    <label for="vacacion_id" class="form-label">Solicitud pendiente (si existe)</label>
+                    <select id="vacacion_id" name="vacacion_id" class="form-control">
+                        <option value="">-- Ninguna --</option>
+                    </select>
+                </div>
+
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label for="fecha_inicio" class="form-label">Fecha inicio (manual)</label>
+                        <input type="date" id="fecha_inicio" name="fecha_inicio" class="form-control">
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label for="fecha_fin" class="form-label">Fecha fin (manual)</label>
+                        <input type="date" id="fecha_fin" name="fecha_fin" class="form-control">
+                    </div>
+                </div>
+
+                <div class="d-flex justify-content-end">
+                    <a href="{{ url_for('rrhh.listar_vacaciones') }}" class="btn btn-secondary me-2">Cancelar</a>
+                    <button type="submit" class="btn btn-primary">Generar PDF</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+function cargarSolicitudes(empleadoId) {
+    const vacSelect = document.getElementById('vacacion_id');
+    const pendientesDiv = document.getElementById('pendientesDiv');
+    vacSelect.innerHTML = '<option value="">-- Ninguna --</option>';
+    pendientesDiv.style.display = 'none';
+
+    if (!empleadoId) return;
+
+    // Llamada simple para traer solicitudes pendientes del empleado
+    fetch(`/rrhh/vacaciones/empleado/${empleadoId}`)
+        .then(r => r.text())
+        .then(html => {
+            // Buscamos markers simples en el HTML retornado: extraer opciones desde un atributo data-options si existe
+            // Para simplicidad, si la página detalle contiene elementos con class 'pendiente-option' los parseamos
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(html, 'text/html');
+            const opciones = doc.querySelectorAll('.pendiente-option');
+            if (opciones.length > 0) {
+                opciones.forEach(opt => {
+                    const id = opt.getAttribute('data-id');
+                    const text = opt.textContent;
+                    const o = document.createElement('option');
+                    o.value = id;
+                    o.textContent = text;
+                    vacSelect.appendChild(o);
+                });
+                pendientesDiv.style.display = 'block';
+            }
+        })
+        .catch(err => console.error(err));
+}
+</script>
+{% endblock %}

@@ -1,0 +1,314 @@
+{% extends "base.html" %}
+
+{% block title %}Perfil - {{ empleado.nombre_completo }} - Sistema RRHH{% endblock %}
+
+{% block content %}
+<style>
+    .sticky-header {
+        position: sticky;
+        top: 0;
+        background: white;
+        z-index: 100;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        padding: 20px 0;
+        margin-bottom: 20px;
+    }
+    
+    .empleado-header {
+        display: flex;
+        align-items: center;
+        gap: 20px;
+    }
+    
+    .empleado-avatar {
+        width: 80px;
+        height: 80px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-size: 32px;
+        font-weight: bold;
+    }
+    
+    .empleado-info h3 {
+        margin: 0;
+        font-size: 24px;
+        font-weight: 600;
+    }
+    
+    .empleado-info p {
+        margin: 4px 0;
+        color: #666;
+        font-size: 14px;
+    }
+    
+    .estado-badge {
+        display: inline-block;
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 12px;
+        font-weight: 600;
+    }
+    
+    .nav-tabs {
+        border-bottom: 2px solid #dee2e6;
+    }
+    
+    .nav-tabs .nav-link {
+        color: #666;
+        border: none;
+        padding: 12px 20px;
+        border-bottom: 3px solid transparent;
+        transition: all 0.3s;
+    }
+    
+    .nav-tabs .nav-link:hover {
+        color: #667eea;
+        border-bottom-color: #667eea;
+    }
+    
+    .nav-tabs .nav-link.active {
+        color: #667eea;
+        border-bottom-color: #667eea;
+        background: none;
+    }
+    
+    .tab-content {
+        padding: 20px 0;
+    }
+    
+    .kpi-card {
+        background: white;
+        border: 1px solid #e0e0e0;
+        border-radius: 8px;
+        padding: 20px;
+        text-align: center;
+    }
+    
+    .kpi-card .numero {
+        font-size: 32px;
+        font-weight: 700;
+        color: #667eea;
+    }
+    
+    .kpi-card .label {
+        color: #999;
+        font-size: 13px;
+        text-transform: uppercase;
+        margin-top: 8px;
+    }
+    
+    .tabla-responsive {
+        overflow-x: auto;
+    }
+    
+    .tabla-responsive table {
+        margin-bottom: 0;
+    }
+    
+    .tabla-responsive thead {
+        background: #f8f9fa;
+    }
+    
+    .pagination {
+        margin-top: 15px;
+        justify-content: center;
+    }
+    
+    .loading {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        min-height: 200px;
+    }
+    
+    .loading .spinner-border {
+        color: #667eea;
+    }
+    
+    .filtros {
+        background: #f8f9fa;
+        padding: 15px;
+        border-radius: 8px;
+        margin-bottom: 20px;
+    }
+    
+    .filtros .form-group {
+        margin-bottom: 0;
+    }
+</style>
+
+<div class="container-fluid">
+    <!-- Encabezado Sticky -->
+    <div class="sticky-header">
+        <div class="empleado-header">
+            <div class="empleado-avatar">
+                {{ (empleado.nombre[0] if empleado.nombre else '') }}{{ (empleado.apellido[0] if empleado.apellido else '') }}
+            </div>
+            <div class="empleado-info flex-grow-1">
+                <h3>{{ empleado.nombre_completo }}</h3>
+                <p><strong>Cargo:</strong> {{ empleado.cargo.nombre }}</p>
+                <p>
+                    <strong>Estado:</strong>
+                    <span class="estado-badge bg-{{ 'success' if empleado.estado.name == 'ACTIVO' else 'danger' }}">
+                        {{ empleado.estado.value }}
+                    </span>
+                </p>
+            </div>
+            <div class="text-end">
+                <p><strong>Código:</strong> {{ empleado.codigo }}</p>
+                <p><strong>Ingreso:</strong> {{ empleado.fecha_ingreso.strftime('%d/%m/%Y') if empleado.fecha_ingreso else 'N/A' }}</p>
+                <p><strong>Antigüedad:</strong> {{ empleado.antiguedad_texto if empleado.fecha_ingreso else 'N/A' }}</p>
+            </div>
+            <a href="{{ url_for('rrhh.listar_empleados') }}" class="btn btn-outline-secondary">
+                <i class="bi bi-arrow-left"></i> Volver
+            </a>
+        </div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="card">
+        <div class="card-body">
+            <ul class="nav nav-tabs" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link active" id="general-tab" data-bs-toggle="tab" data-bs-target="#general" type="button" role="tab">
+                        <i class="bi bi-speedometer"></i> General
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="asistencias-tab" data-bs-toggle="tab" data-bs-target="#asistencias" type="button" role="tab">
+                        <i class="bi bi-calendar-check"></i> Asistencias
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="vacaciones-tab" data-bs-toggle="tab" data-bs-target="#vacaciones" type="button" role="tab">
+                        <i class="bi bi-beach"></i> Vacaciones
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="permisos-tab" data-bs-toggle="tab" data-bs-target="#permisos" type="button" role="tab">
+                        <i class="bi bi-file-earmark"></i> Permisos
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="sanciones-tab" data-bs-toggle="tab" data-bs-target="#sanciones" type="button" role="tab">
+                        <i class="bi bi-exclamation-circle"></i> Sanciones
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="liquidaciones-tab" data-bs-toggle="tab" data-bs-target="#liquidaciones" type="button" role="tab">
+                        <i class="bi bi-receipt"></i> Liquidaciones
+                    </button>
+                </li>
+            </ul>
+
+            <div class="tab-content mt-4">
+                <!-- Tab General -->
+                <div class="tab-pane fade show active" id="general" role="tabpanel">
+                    <div class="row" id="general-content"></div>
+                </div>
+
+                <!-- Tab Asistencias -->
+                <div class="tab-pane fade" id="asistencias" role="tabpanel">
+                    <div class="filtros">
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <label class="form-label">Mes</label>
+                                <select id="asistencias-mes" class="form-select">
+                                    <option value="">Todos</option>
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Año</label>
+                                <select id="asistencias-año" class="form-select">
+                                    <option value="">Todos</option>
+                                </select>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">&nbsp;</label>
+                                <button class="btn btn-primary w-100" onclick="cargarAsistencias(1)">
+                                    <i class="bi bi-search"></i> Filtrar
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="asistencias-content"></div>
+                </div>
+
+                <!-- Tab Vacaciones -->
+                <div class="tab-pane fade" id="vacaciones" role="tabpanel">
+                    <div id="vacaciones-content"></div>
+                </div>
+
+                <!-- Tab Permisos -->
+                <div class="tab-pane fade" id="permisos" role="tabpanel">
+                    <div id="permisos-content"></div>
+                </div>
+
+                <!-- Tab Sanciones -->
+                <div class="tab-pane fade" id="sanciones" role="tabpanel">
+                    <div id="sanciones-content"></div>
+                </div>
+
+                <!-- Tab Liquidaciones -->
+                <div class="tab-pane fade" id="liquidaciones" role="tabpanel">
+                    <div class="filtros">
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <label class="form-label">Período</label>
+                                <input type="month" id="liquidaciones-periodo" class="form-control">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">&nbsp;</label>
+                                <button class="btn btn-primary w-100" onclick="cargarLiquidaciones(1)">
+                                    <i class="bi bi-search"></i> Filtrar
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="liquidaciones-content"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="{{ url_for('static', filename='js/empleado_perfil.js') }}"></script>
+
+<script>
+    const empleadoId = {{ empleado.id }};
+    
+    // Al cambiar tabs, cargar datos
+    document.getElementById('general-tab').addEventListener('shown.bs.tab', function() {
+        cargarGeneral();
+    });
+    
+    document.getElementById('asistencias-tab').addEventListener('shown.bs.tab', function() {
+        inicializarFiltrosAsistencias();
+        cargarAsistencias(1);
+    });
+    
+    document.getElementById('vacaciones-tab').addEventListener('shown.bs.tab', function() {
+        cargarVacaciones();
+    });
+    
+    document.getElementById('permisos-tab').addEventListener('shown.bs.tab', function() {
+        cargarPermisos(1);
+    });
+    
+    document.getElementById('sanciones-tab').addEventListener('shown.bs.tab', function() {
+        cargarSanciones(1);
+    });
+    
+    document.getElementById('liquidaciones-tab').addEventListener('shown.bs.tab', function() {
+        cargarLiquidaciones(1);
+    });
+    
+    // Cargar datos del tab general al inicial
+    cargarGeneral();
+</script>
+
+{% endblock %}

@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+
+{% block title %}Editar Cargo - Sistema RRHH{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <h2><i class="bi bi-pencil-square"></i> Editar Cargo: {{ cargo.nombre }}</h2>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-body">
+                    <form method="POST" action="{{ url_for('rrhh.editar_cargo', cargo_id=cargo.id) }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                        <div class="mb-3">
+                            <label for="nombre" class="form-label">Nombre del Cargo</label>
+                            <input type="text" class="form-control" id="nombre" name="nombre" value="{{ cargo.nombre }}" required>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="descripcion" class="form-label">Descripción</label>
+                            <textarea class="form-control" id="descripcion" name="descripcion" rows="4">{{ cargo.descripcion or '' }}</textarea>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="salario_base" class="form-label">Salario Base</label>
+                            <div class="input-group">
+                                <span class="input-group-text">₲</span>
+                                <input type="number" class="form-control" id="salario_base" name="salario_base" value="{{ cargo.salario_base }}" required step="0.01">
+                            </div>
+                        </div>
+
+                        <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                            <a href="{{ url_for('rrhh.listar_cargos') }}" class="btn btn-secondary">Cancelar</a>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="bi bi-check-circle"></i> Guardar Cambios
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
