@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+
+{% block title %}Postulantes{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="row mb-4">
+        <div class="col-md-8">
+            <h1 class="h3">🎯 Postulantes</h1>
+        </div>
+        <div class="col-md-4 text-end">
+            <a href="{{ url_for('rrhh.postulante_nuevo') }}" class="btn btn-primary">
+                <i class="bi bi-plus-circle"></i> Nuevo Postulante
+            </a>
+        </div>
+    </div>
+
+    <!-- Filtros -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <form method="get" class="row g-3">
+                <div class="col-md-6">
+                    <input type="text" name="search" class="form-control" placeholder="Buscar por nombre, email o cargo..."
+                           value="{{ search }}">
+                </div>
+                <div class="col-md-4">
+                    <select name="estado" class="form-select">
+                        <option value="">-- Todos los estados --</option>
+                        <option value="Nuevo" {% if estado == 'Nuevo' %}selected{% endif %}>Nuevo</option>
+                        <option value="En Evaluación" {% if estado == 'En Evaluación' %}selected{% endif %}>En Evaluación</option>
+                        <option value="Contratado" {% if estado == 'Contratado' %}selected{% endif %}>Contratado</option>
+                        <option value="Rechazado" {% if estado == 'Rechazado' %}selected{% endif %}>Rechazado</option>
+                        <option value="En Espera" {% if estado == 'En Espera' %}selected{% endif %}>En Espera</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <button type="submit" class="btn btn-outline-secondary w-100">Filtrar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Tabla de postulantes -->
+    {% if postulantes.items %}
+    <div class="card">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Nombre</th>
+                        <th>Email</th>
+                        <th>Cargo Postulado</th>
+                        <th>Experiencia</th>
+                        <th>Estado</th>
+                        <th>Postulación</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for postulante in postulantes.items %}
+                    <tr>
+                        <td>
+                            <strong>{{ postulante.nombre }} {{ postulante.apellido }}</strong>
+                        </td>
+                        <td>{{ postulante.email }}</td>
+                        <td>{{ postulante.cargo_postulado }}</td>
+                        <td>{{ postulante.experiencia_años }} años</td>
+                        <td>
+                            {% if postulante.estado == 'Nuevo' %}
+                            <span class="badge bg-info">{{ postulante.estado }}</span>
+                            {% elif postulante.estado == 'En Evaluación' %}
+                            <span class="badge bg-warning text-dark">{{ postulante.estado }}</span>
+                            {% elif postulante.estado == 'Contratado' %}
+                            <span class="badge bg-success">{{ postulante.estado }}</span>
+                            {% elif postulante.estado == 'Rechazado' %}
+                            <span class="badge bg-danger">{{ postulante.estado }}</span>
+                            {% elif postulante.estado == 'En Espera' %}
+                            <span class="badge bg-secondary">{{ postulante.estado }}</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ postulante.fecha_postulacion.strftime('%d/%m/%Y') }}</td>
+                        <td>
+                            <a href="{{ url_for('rrhh.postulante_detalle', postulante_id=postulante.id) }}"
+                               class="btn btn-sm btn-outline-primary">
+                                <i class="bi bi-eye"></i> Ver
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Paginación -->
+    {% if postulantes.pages > 1 %}
+    <nav aria-label="Page navigation" class="mt-4">
+        <ul class="pagination justify-content-center">
+            {% if postulantes.has_prev %}
+            <li class="page-item">
+                <a class="page-link" href="{{ url_for('rrhh.postulantes_lista', page=1, search=search, estado=estado) }}">Primera</a>
+            </li>
+            <li class="page-item">
+                <a class="page-link" href="{{ url_for('rrhh.postulantes_lista', page=postulantes.prev_num, search=search, estado=estado) }}">Anterior</a>
+            </li>
+            {% endif %}
+
+            {% for page_num in postulantes.iter_pages() %}
+                {% if page_num %}
+                    {% if page_num == postulantes.page %}
+                    <li class="page-item active">
+                        <span class="page-link">{{ page_num }}</span>
+                    </li>
+                    {% else %}
+                    <li class="page-item">
+                        <a class="page-link" href="{{ url_for('rrhh.postulantes_lista', page=page_num, search=search, estado=estado) }}">{{ page_num }}</a>
+                    </li>
+                    {% endif %}
+                {% else %}
+                <li class="page-item disabled"><span class="page-link">...</span></li>
+                {% endif %}
+            {% endfor %}
+
+            {% if postulantes.has_next %}
+            <li class="page-item">
+                <a class="page-link" href="{{ url_for('rrhh.postulantes_lista', page=postulantes.next_num, search=search, estado=estado) }}">Siguiente</a>
+            </li>
+            <li class="page-item">
+                <a class="page-link" href="{{ url_for('rrhh.postulantes_lista', page=postulantes.pages, search=search, estado=estado) }}">Última</a>
+            </li>
+            {% endif %}
+        </ul>
+    </nav>
+    {% endif %}
+
+    {% else %}
+    <div class="alert alert-info" role="alert">
+        <i class="bi bi-info-circle"></i> No hay postulantes registrados aún.
+        <a href="{{ url_for('rrhh.postulante_nuevo') }}">Crear el primer postulante</a>
+    </div>
+    {% endif %}
+
+</div>
+{% endblock %}

@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, send_file
+from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify, send_file, current_app
 from flask_login import login_required, current_user
 from sqlalchemy import func, desc, or_
 from decimal import Decimal
@@ -10,11 +10,13 @@ from reportlab.pdfgen import canvas
 import json
 import os
 from werkzeug.utils import secure_filename
+from io import BytesIO
 
 from ..models import (
     db, Empleado, Cargo, Asistencia, Permiso, Sancion, 
     Contrato, Liquidacion, Vacacion, IngresoExtra, Descuento, 
-    Bitacora, EstadoEmpleadoEnum, EstadoVacacionEnum, EstadoPermisoEnum, RoleEnum, Despido
+    Bitacora, EstadoEmpleadoEnum, EstadoVacacionEnum, EstadoPermisoEnum, RoleEnum, Despido,
+    Postulante, DocumentosCurriculum, AsistenciaEvento
 )
 from ..bitacora import registrar_bitacora, registrar_operacion_crud
 from ..reports.report_utils import ReportUtils
@@ -39,6 +41,7 @@ def role_required(*roles):
 UPLOADS_ROOT = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'uploads')
 PERMISOS_UPLOAD_FOLDER = os.path.join(UPLOADS_ROOT, 'permisos')
 SANCIONES_UPLOAD_FOLDER = os.path.join(UPLOADS_ROOT, 'sanciones')
+POSTULANTES_UPLOAD_FOLDER = os.path.join(UPLOADS_ROOT, 'postulantes')
 
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf'}
 
@@ -316,128 +319,146 @@ def ver_asistencia():
     
     return render_template('rrhh/asistencia.html', asistencias=asistencias, fecha=fecha_filtro)
 
+
+def _parse_time(cfg_key, default='08:30'):
+    s = current_app.config.get(cfg_key, default)
+    try:
+        return datetime.strptime(s, '%H:%M').time()
+    except Exception:
+        return datetime.strptime(default, '%H:%M').time()
+
+
+def _resumir_dia_asistencias(empleado_id, dia_date):
+    """Resumir los eventos del día y devolver dict con hora_entrada, hora_salida, presente, observaciones"""
+    eventos = AsistenciaEvento.query.filter(
+        AsistenciaEvento.empleado_id == empleado_id,
+        func.date(AsistenciaEvento.ts) == dia_date
+    ).order_by(AsistenciaEvento.ts).all()
+
+    on_time = _parse_time('ASISTENCIA_ON_TIME', '08:30')
+    tolerancia = _parse_time('ASISTENCIA_TOLERANCE', '08:50')
+    corte_manana = _parse_time('ASISTENCIA_CORTE_MANANA', '12:00')
+    inicio_tarde = _parse_time('ASISTENCIA_INICIO_TARDE', '13:30')
+    salida_final = _parse_time('ASISTENCIA_SALIDA_FINAL', '16:00')
+
+    primera_entrada = None
+    ultima_salida = None
+    observaciones = []
+
+    # Encontrar primera entrada y última salida
+    for ev in eventos:
+        if ev.tipo == 'in' and primera_entrada is None:
+            primera_entrada = ev.ts
+        if ev.tipo == 'out':
+            ultima_salida = ev.ts
+
+    # Clasificar llegada
+    if primera_entrada:
+        t = primera_entrada.time()
+        if t <= on_time:
+            observaciones.append('A tiempo')
+        elif t <= tolerancia:
+            observaciones.append('Tolerancia')
+        elif t < corte_manana:
+            observaciones.append('Llegada tardía')
+        else:
+            # Entrada después del corte de mañana -> considerarla llegada tarde o sólo tarde
+            if t >= inicio_tarde:
+                observaciones.append('Solo tarde')
+            else:
+                observaciones.append('Llegada tardía')
+    else:
+        # No hay entrada por la mañana
+        # Si existe entrada por la tarde, marcar solo tarde
+        entrada_tarde = next((ev for ev in eventos if ev.tipo == 'in' and ev.ts.time() >= inicio_tarde), None)
+        if entrada_tarde:
+            observaciones.append('Ausente mañana; Solo tarde')
+            primera_entrada = entrada_tarde.ts if hasattr(entrada_tarde, 'ts') else entrada_tarde.ts
+        else:
+            observaciones.append('Ausencia')
+
+    # Detectar salida al almuerzo (primer out cercano a medio día)
+    lunch_out = next((ev for ev in eventos if ev.tipo == 'out' and ev.ts.time() >= (datetime.strptime('11:30','%H:%M').time()) and ev.ts.time() <= (datetime.strptime('13:30','%H:%M').time())), None)
+    if lunch_out:
+        observaciones.append('Salida al almuerzo')
+        # buscar entrada después del almuerzo
+        lunch_in = next((ev for ev in eventos if ev.tipo == 'in' and ev.ts > lunch_out.ts), None)
+        if lunch_in:
+            observaciones.append('Entrada del almuerzo')
+
+    # Clasificar salida final
+    if ultima_salida:
+        if ultima_salida.time() >= salida_final:
+            observaciones.append('Salida final')
+        else:
+            observaciones.append('Salida temprana')
+
+    resumen = {
+        'hora_entrada': primera_entrada.time() if primera_entrada else None,
+        'hora_salida': ultima_salida.time() if ultima_salida else None,
+        'presente': True if eventos else False,
+        'observaciones': '; '.join(observaciones) if observaciones else None
+    }
+    return resumen
+
 @rrhh_bp.route('/asistencia/registrar', methods=['POST'])
 @login_required
 def registrar_asistencia():
-    """Registra asistencia por código de empleado (entrada/salida)"""
+    """Registra un evento de asistencia (punch) y actualiza el resumen diario."""
     try:
         codigo = request.json.get('codigo', '').strip().upper()
-        
         if not codigo:
             return jsonify({'success': False, 'message': 'Código de empleado requerido'}), 400
-        
-        # Buscar empleado
+
         empleado = Empleado.query.filter_by(codigo=codigo).first()
-        
         if not empleado:
             return jsonify({'success': False, 'message': f'Empleado con código {codigo} no encontrado'}), 404
-        
+
         if empleado.estado.name != 'ACTIVO':
             return jsonify({'success': False, 'message': f'El empleado está {empleado.estado.value}'}), 403
-        
-        # Buscar o crear registro de hoy
+
+        ahora = datetime.now()
         hoy = date.today()
+
+        # Inferir tipo si no se pasa explícitamente
+        tipo = request.json.get('tipo')
+        eventos_count = AsistenciaEvento.query.filter(
+            AsistenciaEvento.empleado_id == empleado.id,
+            func.date(AsistenciaEvento.ts) == hoy
+        ).count()
+        if tipo not in ('in', 'out'):
+            tipo = 'in' if eventos_count % 2 == 0 else 'out'
+
+        evento = AsistenciaEvento(
+            empleado_id=empleado.id,
+            ts=ahora,
+            tipo=tipo,
+            origen=request.json.get('origen', 'web'),
+            metadata=json.dumps({'ip': request.remote_addr, 'user_agent': request.headers.get('User-Agent')})
+        )
+        db.session.add(evento)
+        db.session.commit()
+
+        # Recalcular y almacenar resumen diario
+        resumen = _resumir_dia_asistencias(empleado.id, hoy)
+
         asistencia = Asistencia.query.filter_by(empleado_id=empleado.id, fecha=hoy).first()
-        
         if not asistencia:
-            # No hay registro → crear con hora_entrada
-            asistencia = Asistencia(
-                empleado_id=empleado.id,
-                fecha=hoy,
-                hora_entrada=datetime.now().time(),
-                presente=True
-            )
+            asistencia = Asistencia(empleado_id=empleado.id, fecha=hoy)
             db.session.add(asistencia)
-            db.session.commit()
-            
-            registrar_operacion_crud(
-                current_user, 'asistencia', 'CREATE', 'asistencias',
-                asistencia.id, {'empleado_codigo': codigo, 'tipo': 'Entrada'}
-            )
-            
-            return jsonify({
-                'success': True,
-                'message': f'Entrada registrada para {empleado.nombre_completo}',
-                'tipo': 'entrada',
-                'hora': asistencia.hora_entrada.strftime('%H:%M:%S')
-            })
-        
-        elif asistencia.hora_salida is None:
-            # Hay entrada pero no salida → registrar salida
-            asistencia.hora_salida = datetime.now().time()
-            db.session.commit()
-            
-            registrar_operacion_crud(
-                current_user, 'asistencia', 'UPDATE', 'asistencias',
-                asistencia.id, {'empleado_codigo': codigo, 'tipo': 'Salida'}
-            )
-            
-            return jsonify({
-                'success': True,
-                'message': f'Salida registrada para {empleado.nombre_completo}',
-                'tipo': 'salida',
-                'hora': asistencia.hora_salida.strftime('%H:%M:%S')
-            })
-        
-        else:
-            # Ya tiene entrada y salida
-            return jsonify({
-                'success': False,
-                'message': f'{empleado.nombre_completo} ya tiene registro completo para hoy'
-            }), 409
-    
+
+        asistencia.hora_entrada = resumen.get('hora_entrada')
+        asistencia.hora_salida = resumen.get('hora_salida')
+        asistencia.presente = resumen.get('presente', True)
+        asistencia.observaciones = resumen.get('observaciones')
+        db.session.commit()
+
+        registrar_operacion_crud(current_user, 'asistencia', 'CREATE', 'asistencias', asistencia.id, {'empleado_codigo': codigo, 'evento_id': evento.id, 'tipo_evento': tipo})
+
+        return jsonify({'success': True, 'message': f'Evento {tipo} registrado para {empleado.nombre_completo}', 'tipo': tipo, 'hora': ahora.strftime('%H:%M:%S'), 'resumen': resumen})
     except Exception as e:
         db.session.rollback()
         return jsonify({'success': False, 'message': f'Error: {str(e)}'}), 500
-
-@rrhh_bp.route('/asistencia/<int:asistencia_id>/editar', methods=['POST'])
-@login_required
-@role_required(RoleEnum.RRHH)
-def editar_asistencia(asistencia_id):
-    """Editar asistencia"""
-    asistencia = Asistencia.query.get_or_404(asistencia_id)
-    
-    try:
-        hora_entrada = request.form.get('hora_entrada')
-        hora_salida = request.form.get('hora_salida')
-        
-        if hora_entrada:
-            asistencia.hora_entrada = datetime.strptime(hora_entrada, '%H:%M').time()
-        
-        if hora_salida:
-            asistencia.hora_salida = datetime.strptime(hora_salida, '%H:%M').time()
-        
-        asistencia.observaciones = request.form.get('observaciones')
-        asistencia.presente = request.form.get('presente') == 'on'
-        
-        db.session.commit()
-        
-        registrar_operacion_crud(
-            current_user, 'asistencia', 'UPDATE', 'asistencias',
-            asistencia_id, {'cambios': 'Asistencia actualizada'}
-        )
-        
-        flash('Asistencia actualizada exitosamente', 'success')
-    except Exception as e:
-        db.session.rollback()
-        flash(f'Error al actualizar asistencia: {str(e)}', 'danger')
-    
-    fecha = asistencia.fecha.strftime('%Y-%m-%d')
-    return redirect(url_for('rrhh.ver_asistencia', fecha=fecha))
-
-# ==================== PERMISOS ====================
-@rrhh_bp.route('/permisos', methods=['GET'])
-@login_required
-def listar_permisos():
-    """Lista permisos"""
-    registrar_bitacora(current_user, 'permisos', 'VIEW', 'permisos')
-    
-    pagina = request.args.get('page', 1, type=int)
-    permisos = Permiso.query.paginate(page=pagina, per_page=10)
-    
-    return render_template('rrhh/permisos.html', permisos=permisos)
-
-
 @rrhh_bp.route('/permisos/empleado/<int:empleado_id>', methods=['GET'])
 @login_required
 @role_required(RoleEnum.RRHH)
@@ -1896,6 +1917,9 @@ def api_empleado_general(empleado_id):
     
     porcentaje_asistencia = (asistencias_mes / dias_habiles_mes * 100) if dias_habiles_mes > 0 else 0
     
+    # Resumen de asistencia de hoy
+    resumen_hoy = _resumir_dia_asistencias(empleado_id, date.today())
+
     return jsonify({
         'id': empleado.id,
         'codigo': empleado.codigo,
@@ -1912,7 +1936,8 @@ def api_empleado_general(empleado_id):
         'sanciones_activas': sanciones_activas,
         'permisos_usados': permisos_usados,
         'asistencia_mes': f"{porcentaje_asistencia:.1f}%",
-        'asistencias_count': asistencias_mes
+        'asistencias_count': asistencias_mes,
+        'resumen_hoy': resumen_hoy
     })
 
 @rrhh_bp.route('/api/empleados/<int:empleado_id>/asistencias', methods=['GET'])
@@ -2145,3 +2170,342 @@ def upload_sancion_justificativo(sancion_id):
     registrar_operacion_crud(current_user, 'sanciones', 'UPDATE', 'sanciones', sancion.id, {'justificativo': sancion.justificativo_archivo})
 
     return jsonify({'message': 'uploaded', 'ruta': sancion.justificativo_archivo}), 200
+
+
+# ===================== MÓDULO POSTULANTES (RECLUTAMIENTO) =====================
+
+@rrhh_bp.route('/postulantes')
+@login_required
+@role_required(RoleEnum.RRHH)
+def postulantes_lista():
+    """Listado de postulantes con búsqueda y filtros"""
+    page = request.args.get('page', 1, type=int)
+    search = request.args.get('search', '', type=str)
+    estado = request.args.get('estado', '', type=str)
+    
+    query = Postulante.query
+    
+    if search:
+        query = query.filter(
+            or_(
+                Postulante.nombre.ilike(f'%{search}%'),
+                Postulante.apellido.ilike(f'%{search}%'),
+                Postulante.email.ilike(f'%{search}%'),
+                Postulante.cargo_postulado.ilike(f'%{search}%')
+            )
+        )
+    
+    if estado:
+        query = query.filter_by(estado=estado)
+    
+    postulantes = query.order_by(desc(Postulante.fecha_postulacion)).paginate(page=page, per_page=15)
+    
+    return render_template('rrhh/postulantes_lista.html', postulantes=postulantes, search=search, estado=estado)
+
+
+@rrhh_bp.route('/postulantes/nuevo', methods=['GET', 'POST'])
+@login_required
+@role_required(RoleEnum.RRHH)
+def postulante_nuevo():
+    """Crear un nuevo postulante"""
+    if request.method == 'POST':
+        # Validar datos básicos
+        nombre = request.form.get('nombre', '').strip()
+        apellido = request.form.get('apellido', '').strip()
+        email = request.form.get('email', '').strip()
+        telefono = request.form.get('telefono', '').strip()
+        fecha_nacimiento_str = request.form.get('fecha_nacimiento', '')
+        nivel_academico = request.form.get('nivel_academico', '').strip()
+        cargo_postulado = request.form.get('cargo_postulado', '').strip()
+        experiencia_años = request.form.get('experiencia_años', 0, type=int)
+        salario_esperado = request.form.get('salario_esperado', None, type=float)
+        observaciones = request.form.get('observaciones', '').strip()
+        
+        if not nombre or not apellido or not email or not cargo_postulado:
+            flash('Nombre, apellido, email y cargo postulado son obligatorios', 'danger')
+            return redirect(url_for('rrhh.postulante_nuevo'))
+        
+        # Verificar email único
+        if Postulante.query.filter_by(email=email).first():
+            flash('Este email ya está registrado como postulante', 'danger')
+            return redirect(url_for('rrhh.postulante_nuevo'))
+        
+        # Crear postulante
+        try:
+            fecha_nacimiento = None
+            if fecha_nacimiento_str:
+                fecha_nacimiento = datetime.strptime(fecha_nacimiento_str, '%Y-%m-%d').date()
+            
+            postulante = Postulante(
+                nombre=nombre,
+                apellido=apellido,
+                email=email,
+                telefono=telefono,
+                fecha_nacimiento=fecha_nacimiento,
+                nivel_academico=nivel_academico,
+                cargo_postulado=cargo_postulado,
+                experiencia_años=experiencia_años,
+                salario_esperado=Decimal(str(salario_esperado)) if salario_esperado else None,
+                estado='Nuevo',
+                observaciones=observaciones,
+                fecha_postulacion=date.today()
+            )
+            db.session.add(postulante)
+            db.session.flush()  # Para obtener el ID antes de commit
+            
+            # Procesar archivos (CV, certificados, etc.)
+            if 'documentos' in request.files:
+                files = request.files.getlist('documentos')
+                for file in files:
+                    if file and file.filename != '':
+                        if not allowed_file(file.filename):
+                            flash(f'Archivo {file.filename} no permitido (solo PNG, JPG, PDF)', 'warning')
+                            continue
+                        
+                        os.makedirs(POSTULANTES_UPLOAD_FOLDER, exist_ok=True)
+                        filename_clean = secure_filename(file.filename)
+                        filename = secure_filename(f"post_{postulante.id}_{int(datetime.utcnow().timestamp())}_{filename_clean}")
+                        filepath = os.path.join(POSTULANTES_UPLOAD_FOLDER, filename)
+                        file.save(filepath)
+                        
+                        # Determinar tipo de documento
+                        ext = filename_clean.rsplit('.', 1)[1].lower()
+                        tipo = 'CV' if filename_clean.lower().startswith('cv') else 'Certificado'
+                        
+                        doc = DocumentosCurriculum(
+                            postulante_id=postulante.id,
+                            tipo=tipo,
+                            nombre_archivo=filename_clean,
+                            ruta_archivo=os.path.relpath(filepath, os.path.dirname(os.path.dirname(__file__))),
+                            tamaño_bytes=len(file.read()),
+                            mime_type=file.content_type or 'application/octet-stream'
+                        )
+                        file.seek(0)  # Reset file pointer
+                        tamaño_bytes = len(file.read())
+                        doc.tamaño_bytes = tamaño_bytes
+                        db.session.add(doc)
+            
+            db.session.commit()
+            registrar_operacion_crud(current_user, 'postulantes', 'CREATE', 'postulantes', postulante.id, {'nombre': nombre, 'apellido': apellido, 'email': email})
+            
+            flash(f'Postulante {nombre} {apellido} creado exitosamente', 'success')
+            return redirect(url_for('rrhh.postulante_detalle', postulante_id=postulante.id))
+        
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Error al crear postulante: {str(e)}', 'danger')
+            return redirect(url_for('rrhh.postulante_nuevo'))
+    
+    return render_template('rrhh/postulante_form.html')
+
+
+@rrhh_bp.route('/postulantes/<int:postulante_id>')
+@login_required
+@role_required(RoleEnum.RRHH)
+def postulante_detalle(postulante_id):
+    """Detalle de un postulante"""
+    postulante = Postulante.query.get_or_404(postulante_id)
+    return render_template('rrhh/postulante_detalle.html', postulante=postulante)
+
+
+@rrhh_bp.route('/postulantes/<int:postulante_id>/cambiar-estado', methods=['POST'])
+@login_required
+@role_required(RoleEnum.RRHH)
+def postulante_cambiar_estado(postulante_id):
+    """Cambiar estado del postulante"""
+    postulante = Postulante.query.get_or_404(postulante_id)
+    nuevo_estado = request.form.get('estado', '').strip()
+    
+    estados_validos = ['Nuevo', 'En Evaluación', 'Contratado', 'Rechazado', 'En Espera']
+    if nuevo_estado not in estados_validos:
+        flash('Estado inválido', 'danger')
+        return redirect(url_for('rrhh.postulante_detalle', postulante_id=postulante_id))
+    
+    postulante.estado = nuevo_estado
+    postulante.fecha_actualizado = datetime.utcnow()
+    db.session.commit()
+    
+    registrar_operacion_crud(current_user, 'postulantes', 'UPDATE', 'postulantes', postulante.id, {'estado': nuevo_estado})
+    flash(f'Estado del postulante actualizado a: {nuevo_estado}', 'success')
+    
+    return redirect(url_for('rrhh.postulante_detalle', postulante_id=postulante_id))
+
+
+@rrhh_bp.route('/postulantes/<int:postulante_id>/descargar-documento/<int:doc_id>')
+@login_required
+@role_required(RoleEnum.RRHH)
+def descargar_documento_postulante(postulante_id, doc_id):
+    """Descargar documento de curriculum"""
+    postulante = Postulante.query.get_or_404(postulante_id)
+    doc = DocumentosCurriculum.query.get_or_404(doc_id)
+    
+    if doc.postulante_id != postulante_id:
+        flash('Acceso denegado', 'danger')
+        return redirect(url_for('rrhh.postulantes_lista'))
+    
+    try:
+        filepath = os.path.join(os.path.dirname(os.path.dirname(__file__)), doc.ruta_archivo)
+        return send_file(filepath, as_attachment=True, download_name=doc.nombre_archivo)
+    except Exception as e:
+        flash(f'Error al descargar archivo: {str(e)}', 'danger')
+        return redirect(url_for('rrhh.postulante_detalle', postulante_id=postulante_id))
+
+
+# ----------------- CONTRATOS (GENERACIÓN con ReportLab y almacenamiento en DB) -----------------
+
+
+def _generar_numero_contrato(empleado_id):
+    """Genera un número de contrato único: CONT-YYYY-EMPID-TIMESTAMP"""
+    ts = int(datetime.utcnow().timestamp())
+    year = datetime.utcnow().year
+    return f'CONT-{year}-{empleado_id}-{ts}'
+
+
+def generar_pdf_contrato(datos: dict) -> bytes:
+    """Genera un PDF de contrato usando ReportLab y devuelve bytes.
+
+    datos: dict con claves: contratante, contratado, ci, direccion_contratante, direccion_contratado,
+    objeto, fecha_inicio (date), fecha_fin (date), monto, ciudad, dia, mes, ano
+    """
+    buffer = BytesIO()
+    c = canvas.Canvas(buffer, pagesize=A4)
+    width, height = A4
+
+    # Margenes
+    margin_left = 50
+    y = height - 70
+
+    c.setFont('Helvetica-Bold', 14)
+    c.drawString(margin_left, y, 'CONTRATO DE PRESTACIÓN DE SERVICIOS')
+    y -= 30
+
+    c.setFont('Helvetica', 11)
+
+    # Plantilla (lineas, usando el texto provisto por el usuario)
+    plantilla = (
+        "Entre {contratante}, con domicilio en {direccion_contratante}, en adelante “EL CONTRATANTE”,"
+        " y {contratado}, con cédula de identidad Nº {ci}, con domicilio en {direccion_contratado},"
+        " en adelante “EL CONTRATADO”, se celebra el presente contrato conforme a las siguientes cláusulas:\n\n"
+        "PRIMERA – Objeto\n\n"
+        "EL CONTRATADO se compromete a prestar servicios de {objeto} a favor de EL CONTRATANTE.\n\n"
+        "SEGUNDA – Plazo\n\n"
+        "El presente contrato tendrá una duración de {meses} meses, iniciando el {fecha_inicio} y finalizando el {fecha_fin}, pudiendo renovarse por acuerdo entre las partes.\n\n"
+        "TERCERA – Honorarios\n\n"
+        "EL CONTRATANTE abonará a EL CONTRATADO la suma de {monto}, pagadera en {periodicidad}.\n\n"
+        "CUARTA – Obligaciones\n\n"
+        "EL CONTRATADO se obliga a cumplir con las tareas asignadas con responsabilidad, confidencialidad y dentro de los plazos establecidos.\n"
+        "EL CONTRATANTE se compromete a proporcionar los medios y la información necesarios para la correcta ejecución del servicio.\n\n"
+        "QUINTA – Terminación\n\n"
+        "Cualquiera de las partes podrá rescindir el presente contrato con un preaviso de {preaviso} días, sin derecho a indemnización, salvo los honorarios devengados hasta la fecha.\n\n"
+        "SEXTA – Jurisdicción\n\n"
+        "Para cualquier controversia derivada del presente contrato, las partes se someten a la jurisdicción de los tribunales de {ciudad}.\n\n"
+        "En prueba de conformidad, se firman dos (2) ejemplares de un mismo tenor y efecto, en {ciudad}, a los {dia} días del mes de {mes} de {ano}.\n\n"
+        "EL CONTRATANTE\n\nFirma: ______________________\nNombre: {contratante}\n\n"
+        "EL CONTRATADO\n\nFirma: ______________________\nNombre: {contratado}\n"
+    )
+
+    texto = plantilla.format(**datos)
+
+    # Dibujar texto con wrapping simple
+    textobj = c.beginText()
+    textobj.setTextOrigin(margin_left, y)
+    textobj.setLeading(14)
+    for line in texto.split('\n'):
+        # dividir si la linea es muy larga
+        if len(line) > 120:
+            # simple wrap
+            while len(line) > 120:
+                textobj.textLine(line[:120])
+                line = line[120:]
+            if line:
+                textobj.textLine(line)
+        else:
+            textobj.textLine(line)
+
+    c.drawText(textobj)
+    c.showPage()
+    c.save()
+
+    buffer.seek(0)
+    return buffer.read()
+
+
+@rrhh_bp.route('/empleados/<int:empleado_id>/contratos/nuevo', methods=['GET', 'POST'])
+@login_required
+@role_required(RoleEnum.RRHH)
+def contrato_nuevo(empleado_id):
+    empleado = Empleado.query.get_or_404(empleado_id)
+    if request.method == 'POST':
+        tipo = request.form.get('tipo_contrato', 'Temporal')
+        fecha_inicio_str = request.form.get('fecha_inicio', '')
+        fecha_fin_str = request.form.get('fecha_fin', '')
+        meses = request.form.get('meses', '0')
+        monto = request.form.get('monto', '0')
+        periodicidad = request.form.get('periodicidad', 'mensual')
+        preaviso = request.form.get('preaviso', '30')
+
+        try:
+            fecha_inicio = datetime.strptime(fecha_inicio_str, '%Y-%m-%d').date() if fecha_inicio_str else None
+            fecha_fin = datetime.strptime(fecha_fin_str, '%Y-%m-%d').date() if fecha_fin_str else None
+
+            numero = _generar_numero_contrato(empleado_id)
+
+            datos_pdf = {
+                'contratante': request.form.get('contratante_nombre', 'EMPRESA'),
+                'direccion_contratante': request.form.get('direccion_contratante', ''),
+                'contratado': f"{empleado.nombre} {empleado.apellido}",
+                'direccion_contratado': request.form.get('direccion_contratado', empleado.direccion if hasattr(empleado, 'direccion') else ''),
+                'ci': request.form.get('ci', getattr(empleado, 'ci', '')),
+                'objeto': request.form.get('objeto', 'servicios'),
+                'meses': meses,
+                'fecha_inicio': fecha_inicio.strftime('%d/%m/%Y') if fecha_inicio else '',
+                'fecha_fin': fecha_fin.strftime('%d/%m/%Y') if fecha_fin else '',
+                'monto': monto,
+                'periodicidad': periodicidad,
+                'preaviso': preaviso,
+                'ciudad': request.form.get('ciudad', 'Ciudad'),
+                'dia': fecha_inicio.day if fecha_inicio else datetime.utcnow().day,
+                'mes': fecha_inicio.strftime('%B') if fecha_inicio else datetime.utcnow().strftime('%B'),
+                'ano': fecha_inicio.year if fecha_inicio else datetime.utcnow().year
+            }
+
+            pdf_bytes = generar_pdf_contrato(datos_pdf)
+
+            contrato = Contrato(
+                empleado_id=empleado_id,
+                numero_contrato=numero,
+                tipo_contrato=tipo,
+                fecha_inicio=fecha_inicio,
+                fecha_fin=fecha_fin,
+                contenido=pdf_bytes,
+                variables=json.dumps(datos_pdf, default=str)
+            )
+            db.session.add(contrato)
+            db.session.commit()
+
+            registrar_operacion_crud(current_user, 'contratos', 'CREATE', 'contratos', contrato.id, {'numero': numero})
+            flash('Contrato generado y guardado correctamente', 'success')
+            return redirect(url_for('rrhh.perfil_empleado', empleado_id=empleado_id))
+
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Error al crear contrato: {str(e)}', 'danger')
+            return redirect(url_for('rrhh.contrato_nuevo', empleado_id=empleado_id))
+
+    # GET
+    return render_template('rrhh/contrato_form.html', empleado=empleado)
+
+
+@rrhh_bp.route('/contratos/<int:contrato_id>/descargar')
+@login_required
+@role_required(RoleEnum.RRHH)
+def contrato_descargar(contrato_id):
+    contrato = Contrato.query.get_or_404(contrato_id)
+    if not contrato.contenido:
+        flash('No hay contenido PDF para este contrato', 'danger')
+        return redirect(url_for('rrhh.perfil_empleado', empleado_id=contrato.empleado_id))
+    buf = BytesIO(contrato.contenido)
+    filename = f"{contrato.numero_contrato}.pdf"
+    return send_file(buf, as_attachment=True, download_name=filename, mimetype='application/pdf')
+
+

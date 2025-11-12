@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+
+{% block title %}Nuevo Postulante{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-lg-8 offset-lg-2">
+            <div class="card">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0">
+                        <i class="bi bi-person-plus"></i> Registrar Nuevo Postulante
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <form method="POST" enctype="multipart/form-data">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                        <!-- Datos Personales -->
+                        <h6 class="mb-3 text-primary fw-bold">Datos Personales</h6>
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label for="nombre" class="form-label">Nombre *</label>
+                                <input type="text" class="form-control" id="nombre" name="nombre" required>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="apellido" class="form-label">Apellido *</label>
+                                <input type="text" class="form-control" id="apellido" name="apellido" required>
+                            </div>
+                        </div>
+
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label for="email" class="form-label">Email *</label>
+                                <input type="email" class="form-control" id="email" name="email" required>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="telefono" class="form-label">Teléfono</label>
+                                <input type="tel" class="form-control" id="telefono" name="telefono">
+                            </div>
+                        </div>
+
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label for="fecha_nacimiento" class="form-label">Fecha de Nacimiento</label>
+                                <input type="date" class="form-control" id="fecha_nacimiento" name="fecha_nacimiento">
+                            </div>
+                            <div class="col-md-6">
+                                <label for="nivel_academico" class="form-label">Nivel Académico</label>
+                                <select class="form-select" id="nivel_academico" name="nivel_academico">
+                                    <option value="">-- Seleccionar --</option>
+                                    <option value="Primaria">Primaria</option>
+                                    <option value="Secundaria">Secundaria</option>
+                                    <option value="Terciaria">Terciaria</option>
+                                    <option value="Universitaria">Universitaria</option>
+                                    <option value="Postgrado">Postgrado</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <hr>
+
+                        <!-- Información Laboral -->
+                        <h6 class="mb-3 text-primary fw-bold">Información Laboral</h6>
+                        <div class="row mb-3">
+                            <div class="col-md-12">
+                                <label for="cargo_postulado" class="form-label">Cargo Postulado *</label>
+                                <input type="text" class="form-control" id="cargo_postulado" name="cargo_postulado" required>
+                            </div>
+                        </div>
+
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label for="experiencia_años" class="form-label">Años de Experiencia</label>
+                                <input type="number" class="form-control" id="experiencia_años" name="experiencia_años" min="0" value="0">
+                            </div>
+                            <div class="col-md-6">
+                                <label for="salario_esperado" class="form-label">Salario Esperado (Gs.)</label>
+                                <input type="number" class="form-control" id="salario_esperado" name="salario_esperado" step="0.01" min="0">
+                            </div>
+                        </div>
+
+                        <hr>
+
+                        <!-- Documentos -->
+                        <h6 class="mb-3 text-primary fw-bold">Documentos (CV, Certificados)</h6>
+                        <div class="mb-3">
+                            <label for="documentos" class="form-label">Subir Archivos</label>
+                            <input type="file" class="form-control" id="documentos" name="documentos" multiple 
+                                   accept=".pdf,.jpg,.jpeg,.png,.gif">
+                            <small class="form-text text-muted">
+                                Formatos permitidos: PDF, JPG, PNG, GIF. Máximo 5 archivos.
+                            </small>
+                        </div>
+
+                        <hr>
+
+                        <!-- Observaciones -->
+                        <div class="mb-3">
+                            <label for="observaciones" class="form-label">Observaciones</label>
+                            <textarea class="form-control" id="observaciones" name="observaciones" rows="3"></textarea>
+                        </div>
+
+                        <!-- Botones -->
+                        <div class="d-flex gap-2 justify-content-between mt-4">
+                            <a href="{{ url_for('rrhh.postulantes_lista') }}" class="btn btn-secondary">
+                                <i class="bi bi-arrow-left"></i> Volver
+                            </a>
+                            <button type="submit" class="btn btn-success">
+                                <i class="bi bi-check-circle"></i> Guardar Postulante
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

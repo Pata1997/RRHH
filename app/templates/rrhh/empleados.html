@@ -46,6 +46,9 @@
                             <a href="{{ url_for('rrhh.perfil_empleado', empleado_id=empleado.id) }}" class="btn btn-sm btn-info" title="Ver perfil completo">
                                 <i class="bi bi-eye"></i> Ver
                             </a>
+                            <a href="{{ url_for('rrhh.perfil_empleado', empleado_id=empleado.id) }}#contratos" class="btn btn-sm btn-secondary" title="Contratos">
+                                <i class="bi bi-file-earmark-text"></i> Contratos
+                            </a>
                             <a href="{{ url_for('rrhh.editar_empleado', empleado_id=empleado.id) }}" class="btn btn-sm btn-warning">
                                 <i class="bi bi-pencil"></i>
                             </a>

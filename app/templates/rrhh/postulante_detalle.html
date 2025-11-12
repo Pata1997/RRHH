@@ -1,0 +1,226 @@
+{% extends "base.html" %}
+
+{% block title %}Postulante: {{ postulante.nombre }} {{ postulante.apellido }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <!-- Header con botones de acción -->
+    <div class="row mb-4">
+        <div class="col-md-8">
+            <h1 class="h3">
+                <i class="bi bi-person-circle"></i> {{ postulante.nombre }} {{ postulante.apellido }}
+            </h1>
+            <p class="text-muted">{{ postulante.cargo_postulado }}</p>
+        </div>
+        <div class="col-md-4 text-end">
+            <a href="{{ url_for('rrhh.postulantes_lista') }}" class="btn btn-outline-secondary">
+                <i class="bi bi-arrow-left"></i> Volver
+            </a>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Columna izquierda: Información del postulante -->
+        <div class="col-lg-8">
+            <!-- Card de Información General -->
+            <div class="card mb-4">
+                <div class="card-header bg-light">
+                    <h6 class="mb-0 fw-bold">Información General</h6>
+                </div>
+                <div class="card-body">
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <strong>Email:</strong>
+                            <p><a href="mailto:{{ postulante.email }}">{{ postulante.email }}</a></p>
+                        </div>
+                        <div class="col-md-6">
+                            <strong>Teléfono:</strong>
+                            <p>{{ postulante.telefono or 'No registrado' }}</p>
+                        </div>
+                    </div>
+
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <strong>Fecha de Nacimiento:</strong>
+                            <p>
+                                {% if postulante.fecha_nacimiento %}
+                                    {{ postulante.fecha_nacimiento.strftime('%d/%m/%Y') }}
+                                {% else %}
+                                    No registrada
+                                {% endif %}
+                            </p>
+                        </div>
+                        <div class="col-md-6">
+                            <strong>Nivel Académico:</strong>
+                            <p>{{ postulante.nivel_academico or 'No especificado' }}</p>
+                        </div>
+                    </div>
+
+                    <hr>
+
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <strong>Cargo Postulado:</strong>
+                            <p>{{ postulante.cargo_postulado }}</p>
+                        </div>
+                        <div class="col-md-6">
+                            <strong>Experiencia:</strong>
+                            <p>{{ postulante.experiencia_años }} años</p>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6">
+                            <strong>Salario Esperado:</strong>
+                            <p>
+                                {% if postulante.salario_esperado %}
+                                    Gs. {{ "{:,.0f}".format(postulante.salario_esperado) }}
+                                {% else %}
+                                    No especificado
+                                {% endif %}
+                            </p>
+                        </div>
+                        <div class="col-md-6">
+                            <strong>Fecha de Postulación:</strong>
+                            <p>{{ postulante.fecha_postulacion.strftime('%d/%m/%Y') }}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Card de Observaciones -->
+            {% if postulante.observaciones %}
+            <div class="card mb-4">
+                <div class="card-header bg-light">
+                    <h6 class="mb-0 fw-bold">Observaciones</h6>
+                </div>
+                <div class="card-body">
+                    <p>{{ postulante.observaciones }}</p>
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Card de Documentos del CV -->
+            <div class="card mb-4">
+                <div class="card-header bg-light">
+                    <h6 class="mb-0 fw-bold">
+                        <i class="bi bi-file-earmark"></i> Documentos
+                    </h6>
+                </div>
+                <div class="card-body">
+                    {% if postulante.documentos %}
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Tipo</th>
+                                    <th>Nombre de Archivo</th>
+                                    <th>Tamaño</th>
+                                    <th>Fecha Carga</th>
+                                    <th>Acción</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for doc in postulante.documentos %}
+                                <tr>
+                                    <td>
+                                        <span class="badge bg-info">{{ doc.tipo }}</span>
+                                    </td>
+                                    <td>{{ doc.nombre_archivo }}</td>
+                                    <td>
+                                        {% if doc.tamaño_bytes %}
+                                            {{ "{:.2f}".format(doc.tamaño_bytes / 1024) }} KB
+                                        {% else %}
+                                            N/A
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ doc.fecha_carga.strftime('%d/%m/%Y %H:%M') if doc.fecha_carga else 'N/A' }}</td>
+                                    <td>
+                                        <a href="{{ url_for('rrhh.descargar_documento_postulante', postulante_id=postulante.id, doc_id=doc.id) }}"
+                                           class="btn btn-sm btn-outline-primary">
+                                            <i class="bi bi-download"></i> Descargar
+                                        </a>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <p class="text-muted">No hay documentos adjuntos.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Columna derecha: Estado y Acciones -->
+        <div class="col-lg-4">
+            <!-- Card de Estado -->
+            <div class="card mb-4 sticky-top" style="top: 20px;">
+                <div class="card-header bg-light">
+                    <h6 class="mb-0 fw-bold">Estado Actual</h6>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        {% if postulante.estado == 'Nuevo' %}
+                        <span class="badge bg-info p-3 fs-6">{{ postulante.estado }}</span>
+                        {% elif postulante.estado == 'En Evaluación' %}
+                        <span class="badge bg-warning text-dark p-3 fs-6">{{ postulante.estado }}</span>
+                        {% elif postulante.estado == 'Contratado' %}
+                        <span class="badge bg-success p-3 fs-6">{{ postulante.estado }}</span>
+                        {% elif postulante.estado == 'Rechazado' %}
+                        <span class="badge bg-danger p-3 fs-6">{{ postulante.estado }}</span>
+                        {% elif postulante.estado == 'En Espera' %}
+                        <span class="badge bg-secondary p-3 fs-6">{{ postulante.estado }}</span>
+                        {% endif %}
+                    </div>
+
+                    <form method="POST" action="{{ url_for('rrhh.postulante_cambiar_estado', postulante_id=postulante.id) }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                        <div class="mb-3">
+                            <label for="estado" class="form-label">Cambiar Estado</label>
+                            <select class="form-select" id="estado" name="estado" required>
+                                <option value="{{ postulante.estado }}" selected>-- Seleccionar --</option>
+                                <option value="Nuevo" {% if postulante.estado == 'Nuevo' %}disabled{% endif %}>Nuevo</option>
+                                <option value="En Evaluación" {% if postulante.estado == 'En Evaluación' %}disabled{% endif %}>En Evaluación</option>
+                                <option value="Contratado" {% if postulante.estado == 'Contratado' %}disabled{% endif %}>Contratado</option>
+                                <option value="Rechazado" {% if postulante.estado == 'Rechazado' %}disabled{% endif %}>Rechazado</option>
+                                <option value="En Espera" {% if postulante.estado == 'En Espera' %}disabled{% endif %}>En Espera</option>
+                            </select>
+                        </div>
+                        <button type="submit" class="btn btn-primary w-100">
+                            <i class="bi bi-check-circle"></i> Actualizar Estado
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Card de Información Adicional -->
+            <div class="card">
+                <div class="card-header bg-light">
+                    <h6 class="mb-0 fw-bold">Información Adicional</h6>
+                </div>
+                <div class="card-body">
+                    <strong>Creado:</strong>
+                    <p class="text-muted">{{ postulante.fecha_creacion.strftime('%d/%m/%Y %H:%M') }}</p>
+
+                    <strong>Última Actualización:</strong>
+                    <p class="text-muted">{{ postulante.fecha_actualizado.strftime('%d/%m/%Y %H:%M') }}</p>
+
+                    {% if postulante.empleado_id %}
+                    <div class="mt-3">
+                        <strong>Empleado Asociado:</strong>
+                        <p>
+                            <a href="{{ url_for('rrhh.perfil_empleado', empleado_id=postulante.empleado_id) }}"
+                               class="btn btn-sm btn-outline-success">
+                                <i class="bi bi-person-check"></i> Ver Empleado
+                            </a>
+                        </p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -18,6 +18,13 @@ class Config:
     MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB máximo
     ALLOWED_EXTENSIONS = {'pdf', 'doc', 'docx', 'jpg', 'jpeg', 'png'}
 
+    # Asistencia - umbrales (HH:MM)
+    ASISTENCIA_ON_TIME = '08:30'
+    ASISTENCIA_TOLERANCE = '08:50'
+    ASISTENCIA_CORTE_MANANA = '12:00'
+    ASISTENCIA_INICIO_TARDE = '13:30'
+    ASISTENCIA_SALIDA_FINAL = '16:00'
+
 class DevelopmentConfig(Config):
     """Configuración de desarrollo"""
     DEBUG = True

@@ -100,6 +100,8 @@ class Empleado(db.Model):
     
     # Relaciones
     asistencias = db.relationship('Asistencia', backref='empleado', lazy=True, cascade='all, delete-orphan')
+    # Eventos de asistencia (punches)
+    asistencia_eventos = db.relationship('AsistenciaEvento', backref='empleado', lazy=True, cascade='all, delete-orphan')
     permisos = db.relationship('Permiso', backref='empleado', lazy=True, cascade='all, delete-orphan')
     sanciones = db.relationship('Sancion', backref='empleado', lazy=True, cascade='all, delete-orphan')
     contratos = db.relationship('Contrato', backref='empleado', lazy=True, cascade='all, delete-orphan')
@@ -157,6 +159,7 @@ class Contrato(db.Model):
     fecha_inicio = db.Column(db.Date, nullable=False)
     fecha_fin = db.Column(db.Date)
     contenido = db.Column(db.LargeBinary)  # PDF almacenado
+    variables = db.Column(db.Text, nullable=True)  # JSON string con las variables usadas para generar el PDF
     fecha_creacion = db.Column(db.DateTime, default=datetime.utcnow)
     
     def __repr__(self):
@@ -179,6 +182,23 @@ class Asistencia(db.Model):
     
     def __repr__(self):
         return f'<Asistencia {self.empleado.codigo} - {self.fecha}>'
+
+
+# ===================== ASISTENCIA EVENTOS =====================
+class AsistenciaEvento(db.Model):
+    """Registra cada punch (entrada/salida) con timestamp para luego resumir por día."""
+    __tablename__ = 'asistencia_eventos'
+
+    id = db.Column(db.Integer, primary_key=True)
+    empleado_id = db.Column(db.Integer, db.ForeignKey('empleados.id'), nullable=False)
+    ts = db.Column(db.DateTime, nullable=False, index=True)
+    tipo = db.Column(db.String(10), nullable=False)  # 'in' o 'out'
+    origen = db.Column(db.String(50), default='web')
+    metadata = db.Column(db.Text, nullable=True)
+    fecha_creacion = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def __repr__(self):
+        return f'<AsistenciaEvento {self.empleado_id} - {self.ts} - {self.tipo}>'
 
 # ===================== PERMISO =====================
 class Permiso(db.Model):
@@ -438,6 +458,10 @@ class Postulante(db.Model):
     apellido = db.Column(db.String(120), nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
     telefono = db.Column(db.String(20))
+    
+    # Información personal adicional
+    fecha_nacimiento = db.Column(db.Date, nullable=True)
+    nivel_academico = db.Column(db.String(120), nullable=True)  # Primaria, Secundaria, Terciaria, Universitaria, Postgrado
     
     # Información laboral
     cargo_postulado = db.Column(db.String(120), nullable=False)

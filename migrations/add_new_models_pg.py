@@ -188,6 +188,8 @@ def main():
                     apellido VARCHAR(120) NOT NULL,
                     email VARCHAR(120) UNIQUE NOT NULL,
                     telefono VARCHAR(20),
+                    fecha_nacimiento DATE,
+                    nivel_academico VARCHAR(120),
                     cargo_postulado VARCHAR(120) NOT NULL,
                     experiencia_años INTEGER DEFAULT 0,
                     salario_esperado NUMERIC(12, 2),

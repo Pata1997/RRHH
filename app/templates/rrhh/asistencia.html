@@ -53,6 +53,7 @@
                     <tr>
                         <th>Código</th>
                         <th>Empleado</th>
+                            <th>Observaciones</th>
                         <th>Hora Entrada</th>
                         <th>Hora Salida</th>
                         <th>Acciones</th>
@@ -63,6 +64,13 @@
                     <tr>
                         <td><strong>{{ asistencia.empleado.codigo }}</strong></td>
                         <td>{{ asistencia.empleado.nombre_completo }}</td>
+                            <td>
+                                {% if asistencia.observaciones %}
+                                    <span class="badge bg-info">{{ asistencia.observaciones }}</span>
+                                {% else %}
+                                    <span class="text-muted">-</span>
+                                {% endif %}
+                            </td>
                         <td>
                             {% if asistencia.hora_entrada %}
                                 <span class="badge bg-success">{{ asistencia.hora_entrada.strftime('%H:%M:%S') }}</span>

@@ -203,6 +203,11 @@
                         <i class="bi bi-receipt"></i> Liquidaciones
                     </button>
                 </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="contratos-tab" data-bs-toggle="tab" data-bs-target="#contratos" type="button" role="tab">
+                        <i class="bi bi-file-earmark-text"></i> Contratos
+                    </button>
+                </li>
             </ul>
 
             <div class="tab-content mt-4">
@@ -270,6 +275,45 @@
                         </div>
                     </div>
                     <div id="liquidaciones-content"></div>
+                </div>
+                <!-- Tab Contratos -->
+                <div class="tab-pane fade" id="contratos" role="tabpanel">
+                    <div class="d-flex justify-content-between mb-3">
+                        <h5>Contratos</h5>
+                        <a href="{{ url_for('rrhh.contrato_nuevo', empleado_id=empleado.id) }}" class="btn btn-primary btn-sm">Nuevo Contrato</a>
+                    </div>
+                    <div>
+                        {% if empleado.contratos %}
+                        <div class="table-responsive">
+                            <table class="table table-sm">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Nº Contrato</th>
+                                        <th>Tipo</th>
+                                        <th>Inicio</th>
+                                        <th>Fin</th>
+                                        <th>Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for c in empleado.contratos %}
+                                    <tr>
+                                        <td>{{ c.numero_contrato }}</td>
+                                        <td>{{ c.tipo_contrato or 'N/A' }}</td>
+                                        <td>{{ c.fecha_inicio.strftime('%d/%m/%Y') if c.fecha_inicio else 'N/A' }}</td>
+                                        <td>{{ c.fecha_fin.strftime('%d/%m/%Y') if c.fecha_fin else 'N/A' }}</td>
+                                        <td>
+                                            <a href="{{ url_for('rrhh.contrato_descargar', contrato_id=c.id) }}" class="btn btn-sm btn-outline-primary">Descargar</a>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        {% else %}
+                        <p class="text-muted">No hay contratos registrados.</p>
+                        {% endif %}
+                    </div>
                 </div>
             </div>
         </div>

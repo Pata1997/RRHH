@@ -81,6 +81,16 @@ function cargarGeneral() {
                         </div>
                     </div>
                 </div>
+                <div class="col-12 mt-4">
+                    <div class="card">
+                        <div class="card-body">
+                            <h6 class="card-title">Asistencia de hoy</h6>
+                            <p><strong>Entrada:</strong> ${data.resumen_hoy.hora_entrada ? data.resumen_hoy.hora_entrada : '-'}</p>
+                            <p><strong>Salida:</strong> ${data.resumen_hoy.hora_salida ? data.resumen_hoy.hora_salida : '-'}</p>
+                            <p><strong>Observaciones:</strong> ${data.resumen_hoy.observaciones || '-'}</p>
+                        </div>
+                    </div>
+                </div>
             `;
             contenedor.innerHTML = html;
         })

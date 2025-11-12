@@ -79,6 +79,15 @@
                             <li><a class="dropdown-item" href="{{ url_for('rrhh.listar_vacaciones') }}">Vacaciones</a></li>
                         </ul>
                     </li>
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
+                            <i class="bi bi-briefcase"></i> Reclutamiento
+                        </a>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="{{ url_for('rrhh.postulantes_lista') }}">Postulantes</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('rrhh.postulante_nuevo') }}">Nuevo Postulante</a></li>
+                        </ul>
+                    </li>
                     <li class="nav-item">
                         <a class="nav-link" href="{{ url_for('rrhh.ver_bitacora') }}">
                             <i class="bi bi-journal-text"></i> Bitácora

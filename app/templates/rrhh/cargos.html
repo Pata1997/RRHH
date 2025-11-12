@@ -65,6 +65,14 @@ function eliminarCargo(id, nombre) {
             const form = document.createElement('form');
             form.method = 'POST';
             form.action = '{{ url_for("rrhh.eliminar_cargo", cargo_id=0) }}'.replace('0', id);
+            
+            // Agregar token CSRF
+            const csrfInput = document.createElement('input');
+            csrfInput.type = 'hidden';
+            csrfInput.name = 'csrf_token';
+            csrfInput.value = '{{ csrf_token() }}';
+            form.appendChild(csrfInput);
+            
             document.body.appendChild(form);
             form.submit();
         }
