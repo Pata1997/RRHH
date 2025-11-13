@@ -204,8 +204,18 @@
                     </button>
                 </li>
                 <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="ingresos-tab" data-bs-toggle="tab" data-bs-target="#ingresos" type="button" role="tab">
+                        <i class="bi bi-cash-stack"></i> Ingresos Extras
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
                     <button class="nav-link" id="contratos-tab" data-bs-toggle="tab" data-bs-target="#contratos" type="button" role="tab">
                         <i class="bi bi-file-earmark-text"></i> Contratos
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="anticipos-tab" data-bs-toggle="tab" data-bs-target="#anticipos" type="button" role="tab">
+                        <i class="bi bi-coin"></i> Mis Adelantos
                     </button>
                 </li>
             </ul>
@@ -276,6 +286,15 @@
                     </div>
                     <div id="liquidaciones-content"></div>
                 </div>
+                <!-- Tab Ingresos Extras -->
+                <div class="tab-pane fade" id="ingresos" role="tabpanel">
+                    <div id="ingresos-extras-content"></div>
+                </div>
+                <!-- Tab Anticipos -->
+                <div class="tab-pane fade" id="anticipos" role="tabpanel">
+                    <div id="anticipos-content"></div>
+                </div>
+
                 <!-- Tab Contratos -->
                 <div class="tab-pane fade" id="contratos" role="tabpanel">
                     <div class="d-flex justify-content-between mb-3">
@@ -321,9 +340,12 @@
 </div>
 
 <script src="{{ url_for('static', filename='js/empleado_perfil.js') }}"></script>
+<script src="{{ url_for('static', filename='js/modales.js') }}"></script>
 
 <script>
     const empleadoId = {{ empleado.id }};
+    const isRRHH = true;  // Permitir a cualquiera que acceda esta página
+    const csrfToken = "{{ csrf_token() }}";  // Token CSRF para peticiones AJAX
     
     // Al cambiar tabs, cargar datos
     document.getElementById('general-tab').addEventListener('shown.bs.tab', function() {
@@ -349,6 +371,14 @@
     
     document.getElementById('liquidaciones-tab').addEventListener('shown.bs.tab', function() {
         cargarLiquidaciones(1);
+    });
+    
+    document.getElementById('anticipos-tab').addEventListener('shown.bs.tab', function() {
+        cargarAnticipos(1);
+    });
+
+    document.getElementById('ingresos-tab') && document.getElementById('ingresos-tab').addEventListener('shown.bs.tab', function() {
+        cargarIngresosExtras(1);
     });
     
     // Cargar datos del tab general al inicial

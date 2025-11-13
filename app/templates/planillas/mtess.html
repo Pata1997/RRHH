@@ -1,0 +1,33 @@
+{% extends 'base.html' %}
+
+{% block title %}Planillas MTESS{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h3>Generar Planillas MTESS</h3>
+    <form method="GET" action="{{ url_for('rrhh.planillas_mtess_download') }}">
+        <div class="row mb-3">
+            <div class="col-md-4">
+                <label class="form-label">Tipo de planilla</label>
+                <select name="tipo" class="form-select">
+                    <option value="personal">Planilla Personal</option>
+                    <option value="sueldos">Planilla Sueldos y Jornales</option>
+                    <option value="resumen">Resumen General</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Año</label>
+                <input type="number" name="anio" class="form-control" value="{{ current_year }}" required>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Mes (opcional)</label>
+                <input type="number" name="mes" class="form-control" min="1" max="12" placeholder="1-12">
+            </div>
+            <div class="col-md-2 d-flex align-items-end">
+                <button class="btn btn-primary w-100">Generar y Descargar</button>
+            </div>
+        </div>
+    </form>
+    <p class="text-muted">Las planillas se generan según el formato MTESS. Las descargas quedan registradas en la bitácora.</p>
+</div>
+{% endblock %}

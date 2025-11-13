@@ -4,8 +4,16 @@ Idempotent migration: create asistencia_eventos table if not exists.
 Run: python migrations/add_asistencia_eventos.py
 """
 import os
+import sys
 import psycopg2
 from psycopg2 import sql
+
+# Load environment variables from .env
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
 
 DATABASE_URL = os.environ.get('DATABASE_URL')
 
@@ -16,7 +24,7 @@ CREATE TABLE IF NOT EXISTS asistencia_eventos (
     ts timestamp without time zone NOT NULL,
     tipo varchar(10) NOT NULL,
     origen varchar(50) DEFAULT 'web',
-    metadata text,
+    detalles text,
     fecha_creacion timestamp without time zone DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_asistencia_eventos_empleado_ts ON asistencia_eventos (empleado_id, ts);

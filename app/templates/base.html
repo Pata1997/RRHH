@@ -31,6 +31,11 @@
                             <i class="bi bi-speedometer2"></i> Dashboard
                         </a>
                     </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('rrhh.planillas_mtess') }}">
+                            <i class="bi bi-file-earmark-spreadsheet"></i> Planillas
+                        </a>
+                    </li>
                     
                     {% if current_user.rol.name == 'RRHH' %}
                     <li class="nav-item dropdown">
@@ -56,6 +61,7 @@
                         <ul class="dropdown-menu">
                             <li><a class="dropdown-item" href="{{ url_for('rrhh.listar_liquidaciones') }}">Liquidaciones</a></li>
                             <li><a class="dropdown-item" href="{{ url_for('rrhh.generar_liquidacion') }}">Generar</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('rrhh.ver_ingresos_extras') }}">Ingresos extras</a></li>
                             <li><hr class="dropdown-divider"></li>
                             <li><a class="dropdown-item" href="{{ url_for('rrhh.listar_aguinaldos') }}">
                                 <i class="bi bi-gift"></i> Aguinaldos
@@ -77,7 +83,13 @@
                             <li><a class="dropdown-item" href="{{ url_for('rrhh.listar_permisos') }}">Permisos</a></li>
                             <li><a class="dropdown-item" href="{{ url_for('rrhh.listar_sanciones') }}">Sanciones</a></li>
                             <li><a class="dropdown-item" href="{{ url_for('rrhh.listar_vacaciones') }}">Vacaciones</a></li>
+                            <li><hr class="dropdown-divider"></li>
                         </ul>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('rrhh.ver_empresa') }}">
+                            Empresa
+                        </a>
                     </li>
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">

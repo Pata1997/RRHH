@@ -14,7 +14,7 @@ function mostrarCarga(elemento) {
     `;
 }
 
-function mostrarError(elemento, mensaje) {
+function mostrarErrorEnContenedor(elemento, mensaje) {
     elemento.innerHTML = `
         <div class="alert alert-danger" role="alert">
             <i class="bi bi-exclamation-triangle"></i> ${mensaje}
@@ -94,7 +94,103 @@ function cargarGeneral() {
             `;
             contenedor.innerHTML = html;
         })
-        .catch(err => mostrarError(contenedor, 'Error al cargar datos generales'));
+        .catch(err => mostrarErrorEnContenedor(contenedor, 'Error al cargar datos generales'));
+}
+
+// Aprobar / Rechazar Ingreso Extra desde el perfil
+// Usar modales personalizados para confirmación y actualizar la lista al confirmar
+window.abrirConfirmAprobar = function(ingresoId) {
+    console.log('abrirConfirmAprobar llamado con ID:', ingresoId);
+    mostrarConfirmacion('Aprobar Ingreso Extra', '¿Confirma aprobar este ingreso extra?', function() {
+        console.log('Usuario confirmó aprobar');
+        fetch(`/rrhh/ingresos-extras/${ingresoId}/approve`, { method: 'POST', headers: { 'X-CSRFToken': csrfToken } })
+            .then(r => {
+                console.log('Respuesta recibida del servidor:', r.status);
+                return r.json();
+            })
+            .then(resp => {
+                console.log('Respuesta parseada:', resp);
+                if (resp.error) {
+                    console.log('Error en respuesta:', resp.error);
+                    mostrarError('Error', resp.error);
+                } else {
+                    console.log('Aprobación exitosa');
+                    // Actualizar fila en el DOM como fallback
+                    try {
+                        const row = document.querySelector(`tr[data-ingreso-id="${ingresoId}"]`);
+                        if (row) {
+                            const badge = row.querySelector('td span.badge');
+                            if (badge) {
+                                badge.className = 'badge bg-success';
+                                badge.textContent = 'APROBADO';
+                            }
+                            const actionsTd = row.querySelectorAll('td')[4];
+                            if (actionsTd) actionsTd.innerHTML = '';
+                        }
+                    } catch (e) {
+                        console.warn('No se pudo actualizar fila en DOM:', e);
+                    }
+                    // Recargar la tabla inmediatamente
+                    console.log('RECARGANDO TABLA AHORA');
+                    cargarIngresosExtras(window.ingresosCurrentPage || 1);
+                    // Mostrar modal de éxito después de refrescar
+                    setTimeout(function() {
+                        console.log('Mostrando modal de éxito');
+                        mostrarExito('Aprobado', 'Ingreso extra aprobado correctamente');
+                    }, 100);
+                }
+            }).catch(err => {
+                console.log('Error en fetch:', err);
+                showFetchError(err);
+            });
+    }, 'Sí, aprobar', 'Cancelar');
+}
+
+window.abrirConfirmRechazar = function(ingresoId) {
+    console.log('abrirConfirmRechazar llamado con ID:', ingresoId);
+    mostrarConfirmacion('Rechazar Ingreso Extra', '¿Confirma rechazar este ingreso extra?', function() {
+        console.log('Usuario confirmó rechazar');
+        fetch(`/rrhh/ingresos-extras/${ingresoId}/reject`, { method: 'POST', headers: { 'X-CSRFToken': csrfToken } })
+            .then(r => {
+                console.log('Respuesta recibida del servidor:', r.status);
+                return r.json();
+            })
+            .then(resp => {
+                console.log('Respuesta parseada:', resp);
+                if (resp.error) {
+                    console.log('Error en respuesta:', resp.error);
+                    mostrarError('Error', resp.error);
+                } else {
+                    console.log('Rechazo exitoso');
+                    // Actualizar fila en el DOM como fallback
+                    try {
+                        const row = document.querySelector(`tr[data-ingreso-id="${ingresoId}"]`);
+                        if (row) {
+                            const badge = row.querySelector('td span.badge');
+                            if (badge) {
+                                badge.className = 'badge bg-danger';
+                                badge.textContent = 'RECHAZADO';
+                            }
+                            const actionsTd = row.querySelectorAll('td')[4];
+                            if (actionsTd) actionsTd.innerHTML = '';
+                        }
+                    } catch (e) {
+                        console.warn('No se pudo actualizar fila en DOM:', e);
+                    }
+                    // Recargar la tabla inmediatamente
+                    console.log('RECARGANDO TABLA AHORA');
+                    cargarIngresosExtras(window.ingresosCurrentPage || 1);
+                    // Mostrar modal de éxito después de refrescar
+                    setTimeout(function() {
+                        console.log('Mostrando modal de éxito');
+                        mostrarExito('Rechazado', 'Ingreso extra rechazado correctamente');
+                    }, 100);
+                }
+            }).catch(err => {
+                console.log('Error en fetch:', err);
+                showFetchError(err);
+            });
+    }, 'Sí, rechazar', 'Cancelar');
 }
 
 // ========== TAB ASISTENCIAS ==========
@@ -189,7 +285,7 @@ function cargarAsistencias(pagina) {
             
             contenedor.innerHTML = html;
         })
-        .catch(err => mostrarError(contenedor, 'Error al cargar asistencias'));
+        .catch(err => mostrarErrorEnContenedor(contenedor, 'Error al cargar asistencias'));
 }
 
 // ========== TAB VACACIONES ==========
@@ -237,7 +333,7 @@ function cargarVacaciones() {
             html += '</tbody></table></div>';
             contenedor.innerHTML = html;
         })
-        .catch(err => mostrarError(contenedor, 'Error al cargar vacaciones'));
+        .catch(err => mostrarErrorEnContenedor(contenedor, 'Error al cargar vacaciones'));
 }
 
 // ========== TAB PERMISOS ==========
@@ -279,7 +375,7 @@ function cargarPermisos(pagina) {
                         <td>${p.dias}</td>
                                 <td>${p.con_goce}</td>
                                 <td>
-                                    ${p.justificativo ? `<a href="/rrhh/${p.justificativo}" target="_blank" class="btn btn-sm btn-outline-primary">Ver</a>` : ''}
+                                    ${p.justificativo ? `<a href="/rrhh/${p.justificativo}" download class="btn btn-sm btn-outline-success">Descargar</a>` : ''}
                                     <input type="file" id="perm-file-${p.id}" style="display:none" onchange="uploadPermisoJustificativo(${p.id})">
                                     <button class="btn btn-sm btn-secondary" onclick="document.getElementById('perm-file-${p.id}').click()">Subir</button>
                                 </td>
@@ -311,7 +407,7 @@ function cargarPermisos(pagina) {
             
             contenedor.innerHTML = html;
         })
-        .catch(err => mostrarError(contenedor, 'Error al cargar permisos'));
+        .catch(err => mostrarErrorEnContenedor(contenedor, 'Error al cargar permisos'));
 }
 
 // ========== TAB SANCIONES ==========
@@ -383,7 +479,7 @@ function cargarSanciones(pagina) {
             
             contenedor.innerHTML = html;
         })
-        .catch(err => mostrarError(contenedor, 'Error al cargar sanciones'));
+        .catch(err => mostrarErrorEnContenedor(contenedor, 'Error al cargar sanciones'));
 }
 
 // ========== UPLOADS: Permisos / Sanciones ==========
@@ -456,8 +552,8 @@ function cargarLiquidaciones(pagina) {
                                 <th>Ingresos Extras</th>
                                 <th>Descuentos</th>
                                 <th>Aporte IPS</th>
-                                <th>Neto</th>
-                                <th>Días</th>
+                                <th>Salario Neto</th>
+                                <th>Días Trabajados</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -500,5 +596,306 @@ function cargarLiquidaciones(pagina) {
             
             contenedor.innerHTML = html;
         })
-        .catch(err => mostrarError(contenedor, 'Error al cargar liquidaciones'));
+        .catch(err => mostrarErrorEnContenedor(contenedor, 'Error al cargar liquidaciones'));
 }
+
+// ========== TAB ANTICIPOS ==========
+function cargarAnticipos(pagina) {
+    const contenedor = document.getElementById('anticipos-content');
+    if (!contenedor) return;
+    mostrarCarga(contenedor);
+
+    fetch(`/rrhh/api/empleados/${empleadoId}/anticipos?page=${pagina}`)
+        .then(r => r.json())
+        .then(data => {
+            let html = `
+                <div class="mb-4">
+                    <div class="card">
+                        <div class="card-header bg-light">
+                            <h6 class="mb-0"><i class="bi bi-plus-circle"></i> Solicitar Nuevo Adelanto</h6>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label class="form-label">Monto (₲)</label>
+                                        <input type="number" id="anticipos-monto" class="form-control" placeholder="500000" min="1">
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="mb-3">
+                                        <label class="form-label">Observaciones (opcional)</label>
+                                        <input type="text" id="anticipos-obs" class="form-control" placeholder="Motivo del adelanto">
+                                    </div>
+                                </div>
+                            </div>
+                            <button class="btn btn-primary" onclick="crearAnticipo()">
+                                <i class="bi bi-send"></i> Solicitar Adelanto
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            if (data.items.length === 0) {
+                html += '<div class="alert alert-info">No hay anticipos registrados</div>';
+            } else {
+                html += `
+                    <div class="tabla-responsive">
+                        <table class="table table-sm table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Monto</th>
+                                    <th>Fecha</th>
+                                    <th>Estado</th>
+                                    <th>Justificativo</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                `;
+
+                data.items.forEach(a => {
+                    let estadoBadge = '';
+                    if (a.aprobado) {
+                        estadoBadge = '<span class="badge bg-success">Aprobado</span>';
+                    } else if (a.rechazado) {
+                        estadoBadge = '<span class="badge bg-danger">Rechazado</span>';
+                    } else {
+                        estadoBadge = '<span class="badge bg-warning">Pendiente</span>';
+                    }
+                    
+                    html += `
+                        <tr>
+                            <td>${formatearMoneda(a.monto)}</td>
+                            <td>${a.fecha_solicitud}</td>
+                            <td>${estadoBadge}</td>
+                            <td>${a.justificativo ? `<a href="/rrhh/uploads/${a.justificativo}" download class="btn btn-sm btn-outline-success">Descargar</a>` : ''}</td>
+                            <td>
+                                ${!a.aprobado && !a.rechazado && isRRHH ? `
+                                    <button class="btn btn-sm btn-success" onclick="aprobarAnticipo(${a.id})"><i class="bi bi-check"></i> Aprobar</button>
+                                    <button class="btn btn-sm btn-danger" onclick="rechazarAnticipo(${a.id})"><i class="bi bi-x"></i> Rechazar</button>
+                                ` : ''}
+                                <input type="file" id="antic-file-${a.id}" style="display:none" onchange="uploadAnticipoJustificativo(${a.id})">
+                                <button class="btn btn-sm btn-secondary" onclick="document.getElementById('antic-file-${a.id}').click()"><i class="bi bi-upload"></i> Subir</button>
+                            </td>
+                        </tr>
+                    `;
+                });
+
+                html += '</tbody></table></div>';
+            }
+
+            contenedor.innerHTML = html;
+        })
+        .catch(err => mostrarErrorEnContenedor(contenedor, 'Error al cargar anticipos'));
+}
+
+
+// ========== TAB INGRESOS EXTRAS (en perfil) ==========
+function cargarIngresosExtras(pagina) {
+    console.log('cargarIngresosExtras llamado con pagina:', pagina);
+    const contenedor = document.getElementById('ingresos-extras-content');
+    console.log('Contenedor encontrado:', contenedor ? 'Sí' : 'No');
+    if (!contenedor) return;
+    mostrarCarga(contenedor);
+
+    const per_page = 10;
+    window.ingresosCurrentPage = pagina || 1;
+    console.log('Haciendo fetch a:', `/rrhh/api/empleados/${empleadoId}/ingresos-extras?page=${window.ingresosCurrentPage}&per_page=${per_page}`);
+    fetch(`/rrhh/api/empleados/${empleadoId}/ingresos-extras?page=${window.ingresosCurrentPage}&per_page=${per_page}`)
+        .then(r => {
+            console.log('Respuesta del API:', r.status);
+            return r.json();
+        })
+        .then(data => {
+            console.log('Datos recibidos:', data);
+            if (!data.items || data.items.length === 0) {
+                console.log('No hay items en la respuesta');
+                contenedor.innerHTML = '<div class="alert alert-info">No hay Ingresos Extras registrados</div>';
+                return;
+            }
+
+            let html = `
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover">
+                        <thead>
+                            <tr>
+                                <th>Fecha</th>
+                                <th>Tipo</th>
+                                <th>Monto</th>
+                                <th>Estado</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+
+            data.items.forEach(it => {
+                const estado = it.estado || '';
+                const badge = estado === 'APROBADO' ? 'success' : (estado === 'RECHAZADO' ? 'danger' : 'warning');
+                html += `
+                    <tr data-ingreso-id="${it.id}">
+                        <td>${it.fecha_creacion || '-'}</td>
+                        <td>${it.tipo || '-'}</td>
+                        <td>${it.monto ? formatearMoneda(it.monto) : '-'}</td>
+                        <td><span class="badge bg-${badge}">${estado}</span></td>
+                        <td>` + (estado === 'PENDIENTE' && typeof isRRHH !== 'undefined' && isRRHH ? `
+                                <button class="btn btn-sm btn-success" onclick="abrirConfirmAprobar(${it.id})">Aprobar</button>
+                                <button class="btn btn-sm btn-danger" onclick="abrirConfirmRechazar(${it.id})">Rechazar</button>
+                            ` : '') + `</td>
+                    </tr>`;
+            });
+
+            html += `</tbody></table></div>`;
+
+            // paginación simple
+            if (data.pages > 1) {
+                html += '<nav><ul class="pagination justify-content-center">';
+                if (data.page > 1) html += `<li class="page-item"><button class="page-link" onclick="cargarIngresosExtras(1)">Primera</button></li>`;
+                if (data.page > 1) html += `<li class="page-item"><button class="page-link" onclick="cargarIngresosExtras(${data.page - 1})">Anterior</button></li>`;
+                html += `<li class="page-item active"><span class="page-link">${data.page} / ${data.pages}</span></li>`;
+                if (data.page < data.pages) html += `<li class="page-item"><button class="page-link" onclick="cargarIngresosExtras(${data.page + 1})">Siguiente</button></li>`;
+                if (data.page < data.pages) html += `<li class="page-item"><button class="page-link" onclick="cargarIngresosExtras(${data.pages})">Última</button></li>`;
+                html += '</ul></nav>';
+            }
+
+            contenedor.innerHTML = html;
+        })
+        .catch(err => mostrarErrorEnContenedor(contenedor, 'Error al cargar Ingresos Extras'));
+}
+
+function showFetchError(err) {
+    console.error(err);
+    mostrarError('Error', err.message || 'Error en la comunicación con el servidor');
+}
+
+function crearAnticipo() {
+    const monto = document.getElementById('anticipos-monto').value;
+    const obs = document.getElementById('anticipos-obs').value;
+
+    if (!monto || monto <= 0) {
+        mostrarError('Validación', 'Por favor ingresa un monto válido');
+        return;
+    }
+
+    fetch(`/rrhh/anticipos/create`, {
+        method: 'POST',
+        headers: { 
+            'Content-Type': 'application/json',
+            'X-CSRFToken': csrfToken
+        },
+        body: JSON.stringify({
+            empleado_id: empleadoId,
+            monto: parseFloat(monto),
+            observaciones: obs || null
+        })
+    }).then(r => r.json())
+      .then(resp => {
+          if (resp.error) {
+              mostrarError('Error', resp.error);
+          } else {
+              document.getElementById('anticipos-monto').value = '';
+              document.getElementById('anticipos-obs').value = '';
+              mostrarExito('Éxito', 'Anticipo solicitado correctamente');
+              setTimeout(() => cargarAnticipos(1), 1000);
+          }
+      }).catch(err => {
+          mostrarError('Error', 'Error al crear anticipo: ' + err.message);
+      });
+}
+
+
+
+function uploadAnticipoJustificativo(anticipoId) {
+    const input = document.getElementById('antic-file-' + anticipoId);
+    if (!input || !input.files || input.files.length === 0) return;
+    const file = input.files[0];
+    const formData = new FormData();
+    formData.append('file', file);
+
+    fetch(`/rrhh/anticipos/${anticipoId}/upload-justificativo`, {
+        method: 'POST',
+        body: formData,
+        headers: { 'X-CSRFToken': csrfToken }
+    }).then(r => r.json())
+      .then(resp => {
+          if (resp.error) {
+              mostrarError('Error', resp.error);
+          } else {
+              mostrarExito('Éxito', 'Justificativo subido correctamente');
+              setTimeout(() => cargarAnticipos(1), 500);
+          }
+      }).catch(err => {
+          mostrarError('Error', 'Error al subir archivo: ' + err.message);
+      });
+}
+
+function aprobarAnticipo(anticipoId) {
+    mostrarConfirmacion(
+        'Aprobar Anticipo',
+        '¿Estás seguro de que deseas aprobar este anticipo y generar el recibo PDF?',
+        function() {
+            fetch(`/rrhh/anticipos/${anticipoId}/approve`, { 
+                method: 'POST',
+                headers: { 'X-CSRFToken': csrfToken }
+            })
+            .then(r => r.json())
+            .then(resp => {
+                if (resp.error) {
+                    mostrarError('Error', resp.error);
+                } else {
+                    // Descargar el PDF automáticamente
+                    if (resp.ruta_pdf) {
+                        const link = document.createElement('a');
+                        link.href = `/rrhh/uploads/${resp.ruta_pdf}`;
+                        link.download = resp.ruta_pdf.split('/').pop();
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                    }
+                    
+                    mostrarExito('Éxito', 'Anticipo aprobado correctamente. PDF generado y descargado.');
+                    // Recargar después de 1 segundo
+                    setTimeout(() => cargarAnticipos(1), 1000);
+                }
+            }).catch(err => {
+                mostrarError('Error', 'Error al aprobar anticipo: ' + err.message);
+            });
+        },
+        'Sí, Aprobar',
+        'Cancelar'
+    );
+}
+
+function rechazarAnticipo(anticipoId) {
+    mostrarConfirmacion(
+        'Rechazar Anticipo',
+        '¿Estás seguro de que deseas rechazar este anticipo?',
+        function() {
+            fetch(`/rrhh/anticipos/${anticipoId}/reject`, { 
+                method: 'POST',
+                headers: { 'X-CSRFToken': csrfToken }
+            })
+            .then(r => r.json())
+            .then(resp => {
+                if (resp.error) {
+                    mostrarError('Error', resp.error);
+                } else {
+                    mostrarExito('Éxito', 'Anticipo rechazado correctamente.');
+                    // Recargar después de 1 segundo
+                    setTimeout(() => cargarAnticipos(1), 1000);
+                }
+            }).catch(err => {
+                mostrarError('Error', 'Error al rechazar anticipo: ' + err.message);
+            });
+        },
+        'Sí, Rechazar',
+        'Cancelar'
+    );
+}
+
+// Hook para cargar anticipos cuando se muestra la pestaña (si existe)
+document.getElementById('anticipos-tab') && document.getElementById('anticipos-tab').addEventListener('shown.bs.tab', function() {
+    cargarAnticipos(1);
+});

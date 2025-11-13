@@ -64,6 +64,7 @@
                             <th>Motivo</th>
                             <th>Observaciones</th>
                             <th>Estado</th>
+                            <th>Justificativo</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -76,8 +77,17 @@
                             <td>{{ perm.observaciones or '-' }}</td>
                             <td>
                                 <span class="badge bg-{{ 'success' if perm.estado.name == 'APROBADO' else 'warning' if perm.estado.name == 'PENDIENTE' else 'danger' }}">{{ perm.estado.value }}</span>
-                                {% if perm.estado.name == 'APROBADO' and perm.justificativo_archivo %}
-                                    <a href="/rrhh/{{ perm.justificativo_archivo }}" target="_blank" class="btn btn-sm btn-outline-primary ms-2">Ver justificativo</a>
+                            </td>
+                            <td>
+                                {% if perm.justificativo_archivo %}
+                                    <a href="/rrhh/{{ perm.justificativo_archivo }}" download class="btn btn-sm btn-outline-success">
+                                        <i class="bi bi-download"></i> Descargar
+                                    </a>
+                                {% else %}
+                                    <input type="file" id="perm-det-file-{{ perm.id }}" style="display:none" onchange="uploadPermisoFromDetalle({{ perm.id }})">
+                                    <button class="btn btn-sm btn-outline-secondary" onclick="document.getElementById('perm-det-file-{{ perm.id }}').click()">
+                                        <i class="bi bi-upload"></i> Subir
+                                    </button>
                                 {% endif %}
                             </td>
                         </tr>
@@ -97,6 +107,7 @@ function uploadPermisoFromDetalle(permisoId) {
     const file = input.files[0];
     const formData = new FormData();
     formData.append('file', file);
+    formData.append('csrf_token', document.querySelector('input[name="csrf_token"]').value || '');
 
     fetch('/rrhh/permisos/' + permisoId + '/upload-justificativo', {
         method: 'POST',
@@ -106,6 +117,7 @@ function uploadPermisoFromDetalle(permisoId) {
           if (resp.error) {
               alert('Error: ' + resp.error);
           } else {
+              alert('Justificativo subido correctamente');
               location.reload();
           }
       }).catch(err => alert('Error al subir archivo'));

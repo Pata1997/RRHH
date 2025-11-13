@@ -55,6 +55,35 @@ class Usuario(UserMixin, db.Model):
         return f'<Usuario {self.nombre_usuario}>'
 
 # ===================== CARGO =====================
+# ===================== EMPRESA =====================
+class Empresa(db.Model):
+    __tablename__ = 'empresas'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    nombre = db.Column(db.String(255), nullable=False)
+    ruc = db.Column(db.String(20), unique=True)
+    direccion = db.Column(db.String(255))
+    telefono = db.Column(db.String(20))
+    email = db.Column(db.String(120))
+    logo_path = db.Column(db.String(255))  # Ruta del logo
+    razon_social = db.Column(db.String(255))  # Razón social completa
+    pais = db.Column(db.String(100), default='Paraguay')
+    ciudad = db.Column(db.String(100))
+    representante_legal = db.Column(db.String(255))  # Nombre del representante
+    ci_representante = db.Column(db.String(20))  # CI del representante
+    
+    # Configuraciones de cálculos
+    porcentaje_ips_empleado = db.Column(db.Numeric(5, 2), default=9.00)  # 9%
+    porcentaje_ips_empleador = db.Column(db.Numeric(5, 2), default=16.50)  # 16.5%
+    dias_habiles_mes = db.Column(db.Integer, default=30)  # Para cálculo de diarios
+    
+    fecha_creacion = db.Column(db.DateTime, default=datetime.utcnow)
+    fecha_actualizacion = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    def __repr__(self):
+        return f'<Empresa {self.nombre}>'
+
+# ===================== CARGO =====================
 class Cargo(db.Model):
     __tablename__ = 'cargos'
     
@@ -109,6 +138,7 @@ class Empleado(db.Model):
     descuentos = db.relationship('Descuento', backref='empleado', lazy=True, cascade='all, delete-orphan')
     liquidaciones = db.relationship('Liquidacion', backref='empleado', lazy=True, cascade='all, delete-orphan')
     vacaciones = db.relationship('Vacacion', backref='empleado', lazy=True, cascade='all, delete-orphan')
+    anticipos = db.relationship('Anticipo', backref='empleado', lazy=True, cascade='all, delete-orphan')
     
     def __repr__(self):
         return f'<Empleado {self.codigo} - {self.nombre} {self.apellido}>'
@@ -194,7 +224,7 @@ class AsistenciaEvento(db.Model):
     ts = db.Column(db.DateTime, nullable=False, index=True)
     tipo = db.Column(db.String(10), nullable=False)  # 'in' o 'out'
     origen = db.Column(db.String(50), default='web')
-    metadata = db.Column(db.Text, nullable=True)
+    detalles = db.Column(db.Text, nullable=True)  # JSON con ip, user_agent, etc.
     fecha_creacion = db.Column(db.DateTime, default=datetime.utcnow)
 
     def __repr__(self):
@@ -253,9 +283,36 @@ class IngresoExtra(db.Model):
     año = db.Column(db.Integer)
     descripcion = db.Column(db.Text)
     fecha_creacion = db.Column(db.DateTime, default=datetime.utcnow)
+    # Estado y control de aplicación
+    estado = db.Column(db.String(20), default='PENDIENTE')  # PENDIENTE, APROBADO, RECHAZADO, APLICADO
+    creado_por = db.Column(db.Integer, db.ForeignKey('usuarios.id'), nullable=True)
+    aplicado = db.Column(db.Boolean, default=False)
+    fecha_aplicacion = db.Column(db.DateTime, nullable=True)
+    justificativo_archivo = db.Column(db.String(255), nullable=True)
     
     def __repr__(self):
         return f'<IngresoExtra {self.empleado.codigo} - {self.tipo}>'
+
+
+# ===================== HORAS EXTRA =====================
+class HorasExtra(db.Model):
+    __tablename__ = 'horas_extras'
+
+    id = db.Column(db.Integer, primary_key=True)
+    empleado_id = db.Column(db.Integer, db.ForeignKey('empleados.id'), nullable=False)
+    fecha = db.Column(db.Date, nullable=False, index=True)
+    horas = db.Column(db.Numeric(6, 2), nullable=False)  # horas en formato decimal, aceptar minutos
+    monto_calculado = db.Column(db.Numeric(12, 2), nullable=False)
+    origen = db.Column(db.String(50), default='asistencia')
+    estado = db.Column(db.String(20), default='PENDIENTE')  # PENDIENTE, APROBADO, RECHAZADO, EXPIRADO
+    aprobado_por = db.Column(db.Integer, db.ForeignKey('usuarios.id'), nullable=True)
+    fecha_aprobacion = db.Column(db.DateTime, nullable=True)
+    aplicado = db.Column(db.Boolean, default=False)
+    fecha_aplicacion = db.Column(db.DateTime, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def __repr__(self):
+        return f'<HorasExtra {self.empleado_id} - {self.fecha} - {self.horas}h>'
 
 # ===================== DESCUENTO =====================
 class Descuento(db.Model):
@@ -277,6 +334,30 @@ class Descuento(db.Model):
     
     def __repr__(self):
         return f'<Descuento {self.empleado.codigo} - {self.tipo}>'
+
+
+# ===================== ANTICIPO =====================
+class Anticipo(db.Model):
+    __tablename__ = 'anticipos'
+
+    id = db.Column(db.Integer, primary_key=True)
+    empleado_id = db.Column(db.Integer, db.ForeignKey('empleados.id'), nullable=False)
+    monto = db.Column(db.Numeric(12, 2), nullable=False)
+    fecha_solicitud = db.Column(db.DateTime, default=datetime.utcnow)
+    aprobado = db.Column(db.Boolean, default=False)
+    aprobado_por = db.Column(db.Integer, db.ForeignKey('usuarios.id'), nullable=True)
+    fecha_aprobacion = db.Column(db.DateTime, nullable=True)
+    rechazado = db.Column(db.Boolean, default=False)
+    rechazado_por = db.Column(db.Integer, db.ForeignKey('usuarios.id'), nullable=True)
+    fecha_rechazo = db.Column(db.DateTime, nullable=True)
+    aplicado = db.Column(db.Boolean, default=False)
+    fecha_aplicacion = db.Column(db.Date, nullable=True)
+    justificativo_archivo = db.Column(db.String(255), nullable=True)
+    observaciones = db.Column(db.Text, nullable=True)
+    fecha_creacion = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def __repr__(self):
+        return f'<Anticipo {self.empleado_id} - {self.monto} - Aprobado:{self.aprobado} - Rechazado:{self.rechazado}>'
 
 # ===================== LIQUIDACION =====================
 class Liquidacion(db.Model):

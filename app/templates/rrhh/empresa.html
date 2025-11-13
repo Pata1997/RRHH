@@ -1,0 +1,226 @@
+{% extends "base.html" %}
+
+{% block title %}Datos de la Empresa{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="row mb-4">
+        <div class="col-12">
+            <h2>Empresa</h2>
+            <p class="text-muted">Carga y gestiona los datos principales de tu empresa para reportes y documentos.</p>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-lg-8">
+            <div class="card">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0">Datos de la Empresa</h5>
+                </div>
+                <div class="card-body">
+                    <form method="POST" action="{{ url_for('rrhh.editar_empresa') }}" enctype="multipart/form-data">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+                        <!-- Datos Básicos -->
+                        <div class="section-title mb-3">
+                            <strong>Datos Básicos</strong>
+                        </div>
+                        
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label">Nombre de la Empresa *</label>
+                                <input type="text" name="nombre" class="form-control" value="{{ empresa.nombre or '' }}" required>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">RUC</label>
+                                <input type="text" name="ruc" class="form-control" value="{{ empresa.ruc or '' }}" placeholder="Ej: 80123456-7">
+                            </div>
+                        </div>
+
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label">Razón Social</label>
+                                <input type="text" name="razon_social" class="form-control" value="{{ empresa.razon_social or '' }}" placeholder="Denominación legal completa">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">País</label>
+                                <input type="text" name="pais" class="form-control" value="{{ empresa.pais or 'Paraguay' }}">
+                            </div>
+                        </div>
+
+                        <!-- Dirección y Contacto -->
+                        <div class="section-title mb-3">
+                            <strong>Dirección y Contacto</strong>
+                        </div>
+
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label">Dirección</label>
+                                <input type="text" name="direccion" class="form-control" value="{{ empresa.direccion or '' }}" placeholder="Calle, número, localidad">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Ciudad</label>
+                                <input type="text" name="ciudad" class="form-control" value="{{ empresa.ciudad or '' }}" placeholder="Ej: Asunción">
+                            </div>
+                        </div>
+
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label">Teléfono</label>
+                                <input type="text" name="telefono" class="form-control" value="{{ empresa.telefono or '' }}" placeholder="+595 21 123456">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Email</label>
+                                <input type="email" name="email" class="form-control" value="{{ empresa.email or '' }}" placeholder="contacto@empresa.com">
+                            </div>
+                        </div>
+
+                        <!-- Representante Legal -->
+                        <div class="section-title mb-3">
+                            <strong>Representante Legal</strong>
+                        </div>
+
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label">Nombre del Representante</label>
+                                <input type="text" name="representante_legal" class="form-control" value="{{ empresa.representante_legal or '' }}" placeholder="Nombre completo">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">CI del Representante</label>
+                                <input type="text" name="ci_representante" class="form-control" value="{{ empresa.ci_representante or '' }}" placeholder="Ej: 1234567">
+                            </div>
+                        </div>
+
+                        <!-- Configuración de Cálculos -->
+                        <div class="section-title mb-3">
+                            <strong>Configuración de Cálculos</strong>
+                        </div>
+
+                        <div class="alert alert-info" role="alert">
+                            <i class="bi bi-info-circle"></i> Estos valores se usan para calcular liquidaciones, aportes IPS y descuentos.
+                        </div>
+
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label">Aporte IPS Empleado (%)</label>
+                                <input type="number" name="porcentaje_ips_empleado" class="form-control" value="{{ empresa.porcentaje_ips_empleado or 9.00 }}" step="0.01" min="0" max="100">
+                                <small class="form-text text-muted">Porcentaje descontado al empleado (típicamente 9%)</small>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Aporte IPS Empleador (%)</label>
+                                <input type="number" name="porcentaje_ips_empleador" class="form-control" value="{{ empresa.porcentaje_ips_empleador or 16.50 }}" step="0.01" min="0" max="100">
+                                <small class="form-text text-muted">Porcentaje a cargo de la empresa (típicamente 16.5%)</small>
+                            </div>
+                        </div>
+
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label">Días Hábiles del Mes</label>
+                                <input type="number" name="dias_habiles_mes" class="form-control" value="{{ empresa.dias_habiles_mes or 30 }}" min="20" max="31">
+                                <small class="form-text text-muted">Base para calcular salario diario (típicamente 30)</small>
+                            </div>
+                        </div>
+
+                        <!-- Logo -->
+                        <div class="section-title mb-3">
+                            <strong>Logo de la Empresa</strong>
+                        </div>
+
+                        {% if empresa.logo_path %}
+                            <div class="mb-3">
+                                <label class="form-label">Logo Actual</label>
+                                <div class="mb-2">
+                                    <img src="/rrhh/uploads/{{ empresa.logo_path }}" alt="Logo" style="max-width: 200px; max-height: 150px; border: 1px solid #ddd; padding: 10px; border-radius: 4px;">
+                                </div>
+                            </div>
+                        {% endif %}
+
+                        <div class="mb-3">
+                            <label class="form-label">Cambiar Logo</label>
+                            <input type="file" name="logo" class="form-control" accept="image/png,image/jpeg,image/jpg,image/gif">
+                            <small class="form-text text-muted">Formatos: PNG, JPG, JPEG, GIF (máx. 16 MB)</small>
+                        </div>
+
+                        <!-- Botones -->
+                        <div class="mb-3">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="bi bi-check-circle"></i> Guardar Cambios
+                            </button>
+                            <a href="{{ url_for('main.dashboard') }}" class="btn btn-secondary">
+                                <i class="bi bi-x-circle"></i> Cancelar
+                            </a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Resumen -->
+        <div class="col-lg-4">
+            <div class="card">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0">Resumen</h5>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <strong>Empresa:</strong> 
+                        <p class="text-muted">{{ empresa.nombre or 'No configurado' }}</p>
+                    </div>
+                    
+                    {% if empresa.ruc %}
+                        <div class="mb-3">
+                            <strong>RUC:</strong> 
+                            <p class="text-muted">{{ empresa.ruc }}</p>
+                        </div>
+                    {% endif %}
+                    
+                    {% if empresa.direccion %}
+                        <div class="mb-3">
+                            <strong>Dirección:</strong> 
+                            <p class="text-muted">{{ empresa.direccion }}</p>
+                        </div>
+                    {% endif %}
+                    
+                    {% if empresa.telefono %}
+                        <div class="mb-3">
+                            <strong>Teléfono:</strong> 
+                            <p class="text-muted">{{ empresa.telefono }}</p>
+                        </div>
+                    {% endif %}
+
+                    <hr>
+
+                    <div class="mb-2">
+                        <strong>Aportes IPS:</strong>
+                    </div>
+                    <div class="mb-3">
+                        <small>
+                            <span class="badge bg-info">Empleado: {{ empresa.porcentaje_ips_empleado or 9.00 }}%</span>
+                            <span class="badge bg-info">Empleador: {{ empresa.porcentaje_ips_empleador or 16.50 }}%</span>
+                        </small>
+                    </div>
+
+                    <div class="mb-3">
+                        <strong>Días Hábiles:</strong> 
+                        <p class="text-muted">{{ empresa.dias_habiles_mes or 30 }} días/mes</p>
+                    </div>
+
+                    {% if empresa.fecha_actualizacion %}
+                        <hr>
+                        <small class="text-muted">
+                            <i class="bi bi-calendar"></i> Última actualización: {{ empresa.fecha_actualizacion.strftime('%d/%m/%Y %H:%M') }}
+                        </small>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .section-title {
+        border-bottom: 2px solid #0d6efd;
+        padding-bottom: 8px;
+        font-size: 0.95rem;
+    }
+</style>
+{% endblock %}

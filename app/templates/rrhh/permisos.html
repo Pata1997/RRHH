@@ -49,15 +49,6 @@
                             <a href="{{ url_for('rrhh.ver_historial_permisos', empleado_id=permiso.empleado.id) }}" class="btn btn-sm btn-info">
                                 <i class="bi bi-eye"></i> Ver
                             </a>
-                            {% if permiso.justificativo_archivo %}
-                            <a href="/rrhh/{{ permiso.justificativo_archivo }}" target="_blank" class="btn btn-sm btn-outline-primary">
-                                <i class="bi bi-file-earmark-arrow-down"></i> Ver Justif.
-                            </a>
-                            {% endif %}
-                            <input type="file" id="perm-file-list-{{ permiso.id }}" style="display:none" onchange="uploadPermisoFromList({{ permiso.id }})">
-                            <button class="btn btn-sm btn-secondary" onclick="document.getElementById('perm-file-list-{{ permiso.id }}').click()">
-                                <i class="bi bi-upload"></i> Subir
-                            </button>
                         </td>
                     </tr>
                     {% endfor %}
@@ -67,27 +58,6 @@
     </div>
 </div>
 
-        <script>
-        function uploadPermisoFromList(permisoId) {
-            const input = document.getElementById(`perm-file-list-${permisoId}`);
-            if (!input || !input.files || input.files.length === 0) return;
-            const file = input.files[0];
-            const formData = new FormData();
-            formData.append('file', file);
 
-            fetch(`/rrhh/permisos/${permisoId}/upload-justificativo`, {
-                method: 'POST',
-                body: formData
-            }).then(r => r.json())
-              .then(resp => {
-                  if (resp.error) {
-                      alert('Error: ' + resp.error);
-                  } else {
-                      // recargar la página para actualizar la tabla
-                      location.reload();
-                  }
-              }).catch(err => alert('Error al subir archivo'));
-        }
-        </script>
 
         {% endblock %}

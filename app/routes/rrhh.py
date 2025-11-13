@@ -13,13 +13,15 @@ from werkzeug.utils import secure_filename
 from io import BytesIO
 
 from ..models import (
-    db, Empleado, Cargo, Asistencia, Permiso, Sancion, 
-    Contrato, Liquidacion, Vacacion, IngresoExtra, Descuento, 
+    db, Empleado, Cargo, Asistencia, Permiso, Sancion,
+    Contrato, Liquidacion, Vacacion, IngresoExtra, Descuento,
     Bitacora, EstadoEmpleadoEnum, EstadoVacacionEnum, EstadoPermisoEnum, RoleEnum, Despido,
-    Postulante, DocumentosCurriculum, AsistenciaEvento
+    Postulante, DocumentosCurriculum, AsistenciaEvento, Empresa, HorasExtra, Anticipo
 )
 from ..bitacora import registrar_bitacora, registrar_operacion_crud
 from ..reports.report_utils import ReportUtils
+from openpyxl import Workbook
+from io import BytesIO as IOBytes
 
 rrhh_bp = Blueprint('rrhh', __name__, url_prefix='/rrhh')
 
@@ -42,6 +44,8 @@ UPLOADS_ROOT = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'uploads
 PERMISOS_UPLOAD_FOLDER = os.path.join(UPLOADS_ROOT, 'permisos')
 SANCIONES_UPLOAD_FOLDER = os.path.join(UPLOADS_ROOT, 'sanciones')
 POSTULANTES_UPLOAD_FOLDER = os.path.join(UPLOADS_ROOT, 'postulantes')
+ANTICIPOS_UPLOAD_FOLDER = os.path.join(UPLOADS_ROOT, 'anticipos')
+INGRESOS_UPLOAD_FOLDER = os.path.join(UPLOADS_ROOT, 'ingresos_extras')
 
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'pdf'}
 
@@ -53,9 +57,21 @@ def allowed_file(filename):
 @rrhh_bp.route('/uploads/<path:subpath>')
 @login_required
 def serve_uploads(subpath):
-    base = os.path.dirname(os.path.dirname(__file__))
-    filepath = os.path.join(base, subpath)
+    # base debe apuntar a app/ para buscar app/uploads/...
+    base = os.path.dirname(os.path.dirname(__file__))  # app/
+    # Pero subpath viene como "uploads/permisos/archivo.pdf"
+    # Queremos buscar en app/uploads/permisos/archivo.pdf
+    # Así que no necesitamos el prefijo "uploads/" en subpath
+    filepath = os.path.join(base, 'uploads', subpath)
+    print(f"\n=== DEBUG serve_uploads ===")
+    print(f"subpath: {subpath}")
+    print(f"base: {base}")
+    print(f"filepath: {filepath}")
+    print(f"exists: {os.path.exists(filepath)}")
+    if os.path.exists(filepath):
+        print(f"✓ Sirviendo archivo: {filepath}")
     if not os.path.exists(filepath):
+        print(f"ERROR: Archivo no encontrado")
         return jsonify({'error': 'File not found'}), 404
     return send_file(filepath)
 
@@ -172,6 +188,95 @@ def editar_empleado(empleado_id):
     
     return render_template('rrhh/editar_empleado.html', empleado=empleado, cargos=cargos)
 
+
+@rrhh_bp.route('/api/empleados/<int:empleado_id>/general', methods=['GET'], endpoint='api_empleado_general_v2')
+@login_required
+def api_empleado_general_v2(empleado_id):
+    """API usada por el perfil del empleado: KPIs y resumen de hoy, incluyendo Ingresos Extras."""
+    empleado = Empleado.query.get_or_404(empleado_id)
+
+    # Asistencia mes (conteo de días presentes en el mes actual)
+    hoy = date.today()
+    asistencia_mes = db.session.query(func.count(Asistencia.id)).filter(
+        Asistencia.empleado_id == empleado.id,
+        func.extract('month', Asistencia.fecha) == hoy.month,
+        func.extract('year', Asistencia.fecha) == hoy.year,
+        Asistencia.presente == True
+    ).scalar() or 0
+
+    # Vacaciones pendientes: sumar días pendientes para el año actual (más representativo)
+    vacaciones_pendientes = 0
+    if 'Vacacion' in globals():
+        try:
+            vacaciones_pendientes = db.session.query(func.coalesce(func.sum(Vacacion.dias_pendientes), 0)).filter(
+                Vacacion.empleado_id == empleado.id,
+                Vacacion.año == hoy.year
+            ).scalar() or 0
+            vacaciones_pendientes = int(vacaciones_pendientes)
+        except Exception:
+            # fallback al conteo de solicitudes pendientes si hay algún problema
+            vacaciones_pendientes = Vacacion.query.filter_by(empleado_id=empleado.id, estado=EstadoVacacionEnum.PENDIENTE).count()
+
+    # Sanciones activas
+    sanciones_activas = Sancion.query.filter_by(empleado_id=empleado.id).count()
+
+    # Permisos usados (conteo de permisos en el mes)
+    permisos_usados = Permiso.query.filter(
+        Permiso.empleado_id == empleado.id,
+        func.extract('month', Permiso.fecha_creacion) == hoy.month,
+        func.extract('year', Permiso.fecha_creacion) == hoy.year
+    ).count()
+
+    # Resumen hoy
+    resumen_hoy = _resumir_dia_asistencias(empleado.id, hoy)
+
+    # Ingresos extras resumen
+    ingresos_pending_count = IngresoExtra.query.filter_by(empleado_id=empleado.id, estado='PENDIENTE').count()
+    ingresos_pending_total = db.session.query(func.coalesce(func.sum(IngresoExtra.monto), 0)).filter(
+        IngresoExtra.empleado_id == empleado.id,
+        IngresoExtra.estado == 'PENDIENTE'
+    ).scalar() or 0
+
+    ultimo_ingreso = IngresoExtra.query.filter_by(empleado_id=empleado.id).order_by(IngresoExtra.id.desc()).first()
+    ultimo = None
+    if ultimo_ingreso:
+        ultimo = {
+            'id': ultimo_ingreso.id,
+            'tipo': getattr(ultimo_ingreso, 'tipo', None),
+            'monto': float(ultimo_ingreso.monto) if getattr(ultimo_ingreso, 'monto', None) is not None else None,
+            'mes': getattr(ultimo_ingreso, 'mes', None),
+            'año': getattr(ultimo_ingreso, 'año', None),
+            'estado': getattr(ultimo_ingreso, 'estado', None),
+            'justificativo': getattr(ultimo_ingreso, 'justificativo_archivo', None)
+        }
+
+    # calcular antiguedad en años (texto)
+    antig = '-'
+    if empleado.fecha_ingreso:
+        años = (date.today() - empleado.fecha_ingreso).days // 365
+        antig = f"{años} años"
+
+    data = {
+        'asistencia_mes': int(asistencia_mes),
+        'vacaciones_pendientes': int(vacaciones_pendientes) if vacaciones_pendientes is not None else 0,
+        'sanciones_activas': int(sanciones_activas),
+        'permisos_usados': int(permisos_usados),
+        'salario_base': float(empleado.salario_base) if empleado.salario_base is not None else 0,
+        'fecha_ingreso': empleado.fecha_ingreso.strftime('%Y-%m-%d') if empleado.fecha_ingreso else None,
+        'antiguedad': antig,
+        'estado': 'Activo' if getattr(empleado.estado, 'name', '').upper() == 'ACTIVO' else (empleado.estado.value if hasattr(empleado.estado, 'value') else str(empleado.estado)),
+        'email': empleado.email,
+        'telefono': empleado.telefono,
+        'resumen_hoy': resumen_hoy,
+        'ingresos_extras': {
+            'pendientes_count': int(ingresos_pending_count),
+            'pendientes_total': float(ingresos_pending_total),
+            'ultimo': ultimo
+        }
+    }
+
+    return jsonify(data)
+
 @rrhh_bp.route('/empleados/<int:empleado_id>/eliminar', methods=['POST'])
 @login_required
 @role_required(RoleEnum.RRHH)
@@ -195,6 +300,112 @@ def eliminar_empleado(empleado_id):
         flash(f'Error al eliminar empleado: {str(e)}', 'danger')
     
     return redirect(url_for('rrhh.listar_empleados'))
+
+
+# ===================== PLANILLAS MTESS =====================
+@rrhh_bp.route('/planillas/mtess', methods=['GET'])
+@login_required
+def planillas_mtess():
+    hoy = date.today()
+    return render_template('planillas/mtess.html', current_year=hoy.year)
+
+
+@rrhh_bp.route('/planillas/mtess/download', methods=['GET'])
+@login_required
+def planillas_mtess_download():
+    tipo = request.args.get('tipo') or 'personal'
+    anio = int(request.args.get('anio') or date.today().year)
+    mes = request.args.get('mes')
+    mes = int(mes) if mes else None
+
+    wb = Workbook()
+    # Remove default sheet
+    default = wb.active
+    wb.remove(default)
+
+    detalle_bitacora = {'tipo': tipo, 'anio': anio, 'mes': mes}
+
+    if tipo == 'personal':
+        ws = wb.create_sheet('Personal')
+        headers = ['Nombre', 'Apellido', 'Cédula', 'Fecha Ingreso', 'Fecha Salida', 'Cargo', 'Sexo', 'Edad', 'Nacionalidad', 'Motivo Salida']
+        ws.append(headers)
+
+        # empleados que tuvieron relación durante el año
+        fin_anio = date(anio, 12, 31)
+        empleados = Empleado.query.filter(Empleado.fecha_ingreso <= fin_anio).all()
+        for e in empleados:
+            fecha_salida = e.fecha_retiro.strftime('%d/%m/%Y') if getattr(e, 'fecha_retiro', None) else ''
+            fecha_ing = e.fecha_ingreso.strftime('%d/%m/%Y') if e.fecha_ingreso else ''
+            edad = ''
+            if getattr(e, 'fecha_nacimiento', None):
+                try:
+                    edad = str((date(anio,12,31) - e.fecha_nacimiento).days // 365)
+                except Exception:
+                    edad = ''
+            nacionalidad = getattr(e, 'nacionalidad', '') if hasattr(e, 'nacionalidad') else ''
+            motivo = ''
+            sexo = (getattr(e, 'sexo') or '')
+            ws.append([e.nombre, e.apellido, getattr(e, 'ci', ''), fecha_ing, fecha_salida, getattr(e.cargo, 'nombre', ''), sexo, edad, nacionalidad, motivo])
+
+    elif tipo == 'sueldos':
+        ws = wb.create_sheet('Sueldos')
+        headers = ['Cédula', 'Nombre', 'Período', 'Salario Base', 'Ingresos Extras', 'Descuentos', 'Aporte IPS', 'Salario Neto', 'Días Trabajados']
+        ws.append(headers)
+
+        # filtrar liquidaciones por año/mes
+        if mes:
+            periodo = f"{anio}-{mes:02d}"
+            liquidaciones = Liquidacion.query.filter(Liquidacion.periodo == periodo).all()
+        else:
+            liquidaciones = Liquidacion.query.filter(Liquidacion.periodo.like(f"{anio}-%")).all()
+
+        for l in liquidaciones:
+            emp = l.empleado
+            ws.append([getattr(emp, 'ci', ''), emp.nombre_completo, l.periodo, float(l.salario_base or 0), float(l.ingresos_extras or 0), float(l.descuentos or 0), float(l.aporte_ips or 0), float(l.salario_neto or 0), int(l.dias_trabajados or 0)])
+
+    else:  # resumen
+        ws = wb.create_sheet('Resumen')
+        headers = ['Métrica', 'Valor']
+        ws.append(headers)
+
+        fin_anio = date(anio,12,31)
+        empleados = Empleado.query.filter(Empleado.fecha_ingreso <= fin_anio).all()
+        total = len(empleados)
+        hombres = sum(1 for e in empleados if (getattr(e, 'sexo') or '').upper() == 'M')
+        mujeres = sum(1 for e in empleados if (getattr(e, 'sexo') or '').upper() == 'F')
+        menores = 0
+        for e in empleados:
+            if getattr(e, 'fecha_nacimiento', None):
+                edad = (date(anio,12,31) - e.fecha_nacimiento).days // 365
+                if edad < 18:
+                    menores += 1
+
+        # por cargos (categorías)
+        cargos = db.session.query(Cargo.nombre, func.count(Empleado.id)).join(Empleado).group_by(Cargo.nombre).all()
+        extranjeros = 0
+
+        ws.append(['Total trabajadores', total])
+        ws.append(['Hombres', hombres])
+        ws.append(['Mujeres', mujeres])
+        ws.append(['Menores de edad', menores])
+        for c_name, cnt in cargos:
+            ws.append([f'Cargo: {c_name}', cnt])
+        ws.append(['Empleados extranjeros (no disponible)', extranjeros])
+
+    # Generar archivo en memoria
+    out = IOBytes()
+    wb.save(out)
+    out.seek(0)
+
+    filename = f"MTESS_{tipo}_{anio}{('_%02d' % mes) if mes else ''}.xlsx"
+
+    # Registrar en bitácora
+    try:
+        registrar_bitacora(current_user, 'planillas', 'DOWNLOAD', 'planillas_mtess', None, json.dumps(detalle_bitacora))
+    except Exception as e:
+        print('Error bitacora planillas:', e)
+
+    return send_file(out, as_attachment=True, download_name=filename, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
 # ==================== CARGOS ====================
 @rrhh_bp.route('/cargos', methods=['GET'])
@@ -300,6 +511,75 @@ def eliminar_cargo(cargo_id):
     
     return redirect(url_for('rrhh.listar_cargos'))
 
+# ==================== EMPRESA ====================
+@rrhh_bp.route('/empresa', methods=['GET'])
+@login_required
+@role_required(RoleEnum.RRHH)
+def ver_empresa():
+    """Ver/editar datos de la empresa"""
+    empresa = Empresa.query.first()
+    if not empresa:
+        empresa = Empresa(nombre='Mi Empresa')
+        db.session.add(empresa)
+        db.session.commit()
+    
+    registrar_bitacora(current_user, 'empresa', 'VIEW', 'empresas')
+    return render_template('rrhh/empresa.html', empresa=empresa)
+
+@rrhh_bp.route('/empresa/editar', methods=['POST'])
+@login_required
+@role_required(RoleEnum.RRHH)
+def editar_empresa():
+    """Editar datos de la empresa"""
+    empresa = Empresa.query.first()
+    if not empresa:
+        empresa = Empresa()
+        db.session.add(empresa)
+    
+    try:
+        empresa.nombre = request.form.get('nombre')
+        empresa.ruc = request.form.get('ruc')
+        empresa.razon_social = request.form.get('razon_social')
+        empresa.direccion = request.form.get('direccion')
+        empresa.ciudad = request.form.get('ciudad')
+        empresa.pais = request.form.get('pais', 'Paraguay')
+        empresa.telefono = request.form.get('telefono')
+        empresa.email = request.form.get('email')
+        empresa.representante_legal = request.form.get('representante_legal')
+        empresa.ci_representante = request.form.get('ci_representante')
+        
+        # Porcentajes
+        if request.form.get('porcentaje_ips_empleado'):
+            empresa.porcentaje_ips_empleado = Decimal(request.form.get('porcentaje_ips_empleado'))
+        if request.form.get('porcentaje_ips_empleador'):
+            empresa.porcentaje_ips_empleador = Decimal(request.form.get('porcentaje_ips_empleador'))
+        if request.form.get('dias_habiles_mes'):
+            empresa.dias_habiles_mes = int(request.form.get('dias_habiles_mes'))
+        
+        # Subir logo si viene un archivo
+        if 'logo' in request.files:
+            file = request.files['logo']
+            if file and allowed_file(file.filename):
+                filename = secure_filename(f"logo_{int(datetime.utcnow().timestamp())}.{file.filename.rsplit('.', 1)[1].lower()}")
+                logo_path = os.path.join(UPLOADS_ROOT, 'empresa')
+                os.makedirs(logo_path, exist_ok=True)
+                file.save(os.path.join(logo_path, filename))
+                empresa.logo_path = f"empresa/{filename}"
+        
+        db.session.commit()
+        
+        registrar_operacion_crud(
+            current_user, 'empresa', 'UPDATE', 'empresas', 
+            empresa.id, {'nombre': empresa.nombre}
+        )
+        
+        flash('Datos de la empresa actualizados exitosamente', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Error al actualizar empresa: {str(e)}', 'danger')
+    
+    return redirect(url_for('rrhh.ver_empresa'))
+
 # ==================== ASISTENCIA ====================
 @rrhh_bp.route('/asistencia', methods=['GET'])
 @login_required
@@ -394,8 +674,8 @@ def _resumir_dia_asistencias(empleado_id, dia_date):
             observaciones.append('Salida temprana')
 
     resumen = {
-        'hora_entrada': primera_entrada.time() if primera_entrada else None,
-        'hora_salida': ultima_salida.time() if ultima_salida else None,
+        'hora_entrada': primera_entrada.time().strftime('%H:%M:%S') if primera_entrada else None,
+        'hora_salida': ultima_salida.time().strftime('%H:%M:%S') if ultima_salida else None,
         'presente': True if eventos else False,
         'observaciones': '; '.join(observaciones) if observaciones else None
     }
@@ -434,7 +714,7 @@ def registrar_asistencia():
             ts=ahora,
             tipo=tipo,
             origen=request.json.get('origen', 'web'),
-            metadata=json.dumps({'ip': request.remote_addr, 'user_agent': request.headers.get('User-Agent')})
+            detalles=json.dumps({'ip': request.remote_addr, 'user_agent': request.headers.get('User-Agent')})
         )
         db.session.add(evento)
         db.session.commit()
@@ -453,24 +733,73 @@ def registrar_asistencia():
         asistencia.observaciones = resumen.get('observaciones')
         db.session.commit()
 
+
         registrar_operacion_crud(current_user, 'asistencia', 'CREATE', 'asistencias', asistencia.id, {'empleado_codigo': codigo, 'evento_id': evento.id, 'tipo_evento': tipo})
 
         return jsonify({'success': True, 'message': f'Evento {tipo} registrado para {empleado.nombre_completo}', 'tipo': tipo, 'hora': ahora.strftime('%H:%M:%S'), 'resumen': resumen})
     except Exception as e:
         db.session.rollback()
         return jsonify({'success': False, 'message': f'Error: {str(e)}'}), 500
-@rrhh_bp.route('/permisos/empleado/<int:empleado_id>', methods=['GET'])
+
+@rrhh_bp.route('/asistencia/<int:asistencia_id>/editar', methods=['POST'])
 @login_required
 @role_required(RoleEnum.RRHH)
+def editar_asistencia(asistencia_id):
+    """Editar asistencia"""
+    asistencia = Asistencia.query.get_or_404(asistencia_id)
+    
+    try:
+        hora_entrada = request.form.get('hora_entrada')
+        hora_salida = request.form.get('hora_salida')
+        
+        if hora_entrada:
+            asistencia.hora_entrada = datetime.strptime(hora_entrada, '%H:%M').time()
+        
+        if hora_salida:
+            asistencia.hora_salida = datetime.strptime(hora_salida, '%H:%M').time()
+        
+        asistencia.observaciones = request.form.get('observaciones')
+        asistencia.presente = request.form.get('presente') == 'on'
+        
+        db.session.commit()
+        
+        registrar_operacion_crud(
+            current_user, 'asistencia', 'UPDATE', 'asistencias',
+            asistencia_id, {'cambios': 'Asistencia actualizada'}
+        )
+        
+        flash('Asistencia actualizada exitosamente', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Error al actualizar asistencia: {str(e)}', 'danger')
+    
+    fecha = asistencia.fecha.strftime('%Y-%m-%d')
+    return redirect(url_for('rrhh.ver_asistencia', fecha=fecha))
+
+@rrhh_bp.route('/permisos/empleado/<int:empleado_id>', methods=['GET'])
+@login_required
 def ver_historial_permisos(empleado_id):
     """Ver historial de permisos de un empleado, incluyendo observaciones"""
     registrar_bitacora(current_user, 'permisos', 'VIEW', 'permisos')
 
     empleado = Empleado.query.get_or_404(empleado_id)
+    
     permisos = Permiso.query.filter_by(empleado_id=empleado_id).order_by(Permiso.fecha_creacion.desc()).all()
     pendientes = [p for p in permisos if p.estado.name == 'PENDIENTE']
 
     return render_template('rrhh/permiso_detalle.html', empleado=empleado, permisos=permisos, pendientes=pendientes)
+
+@rrhh_bp.route('/permisos', methods=['GET'])
+@login_required
+@role_required(RoleEnum.RRHH)
+def listar_permisos():
+    """Lista permisos"""
+    registrar_bitacora(current_user, 'permisos', 'VIEW', 'permisos')
+    
+    pagina = request.args.get('page', 1, type=int)
+    permisos = Permiso.query.paginate(page=pagina, per_page=10)
+    
+    return render_template('rrhh/permisos.html', permisos=permisos)
 
 @rrhh_bp.route('/permisos/solicitar', methods=['GET', 'POST'])
 @login_required
@@ -602,6 +931,40 @@ def aprobar_permiso(permiso_id):
         flash(f'Error al aprobar permiso: {str(e)}', 'danger')
     
     return redirect(url_for('rrhh.listar_permisos'))
+
+
+@rrhh_bp.route('/ingresos-extras/<int:ingreso_id>/approve', methods=['POST'])
+@login_required
+@role_required(RoleEnum.RRHH)
+def aprobar_ingreso_extra(ingreso_id):
+    ingreso = IngresoExtra.query.get_or_404(ingreso_id)
+    try:
+        ingreso.estado = 'APROBADO'
+        ingreso.aprobado_por = current_user.id
+        ingreso.fecha_aprobacion = datetime.utcnow()
+        db.session.commit()
+        registrar_operacion_crud(current_user, 'ingresos_extras', 'UPDATE', 'ingresos_extras', ingreso_id, {'estado': 'APROBADO'})
+        return jsonify({'message': 'Ingreso extra aprobado'}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+
+@rrhh_bp.route('/ingresos-extras/<int:ingreso_id>/reject', methods=['POST'])
+@login_required
+@role_required(RoleEnum.RRHH)
+def rechazar_ingreso_extra(ingreso_id):
+    ingreso = IngresoExtra.query.get_or_404(ingreso_id)
+    try:
+        ingreso.estado = 'RECHAZADO'
+        ingreso.aprobado_por = current_user.id
+        ingreso.fecha_aprobacion = datetime.utcnow()
+        db.session.commit()
+        registrar_operacion_crud(current_user, 'ingresos_extras', 'UPDATE', 'ingresos_extras', ingreso_id, {'estado': 'RECHAZADO'})
+        return jsonify({'message': 'Ingreso extra rechazado'}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
 
 
 @rrhh_bp.route('/permisos/<int:permiso_id>/anular', methods=['POST'])
@@ -783,6 +1146,274 @@ def listar_liquidaciones():
     
     return render_template('rrhh/liquidaciones.html', liquidaciones=liquidaciones, periodo=periodo_filtro)
 
+
+# ==================== INGRESOS EXTRAS / HORAS ====================
+@rrhh_bp.route('/ingresos-extras', methods=['GET'])
+@login_required
+@role_required(RoleEnum.RRHH)
+def ver_ingresos_extras():
+    """Página principal para administrar ingresos extras y horas extra"""
+    registrar_bitacora(current_user, 'ingresos_extras', 'VIEW', 'ingresos_extras')
+    # Pasar el módulo `date` para permitir usar `date.today()` en la plantilla
+    # Usar plantilla limpia para evitar problemas si la original está corrupta
+    return render_template('rrhh/ingresos_extras_clean.html', date=date)
+
+
+@rrhh_bp.route('/api/empleados/<int:empleado_id>/ingresos-extras', methods=['GET'])
+@login_required
+def api_empleado_ingresos_extras(empleado_id):
+    """Devuelve Ingresos Extra de un empleado (paginado)."""
+    pagina = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 10, type=int)
+
+    query = IngresoExtra.query.filter_by(empleado_id=empleado_id).order_by(IngresoExtra.id.desc())
+    pag = query.paginate(page=pagina, per_page=per_page)
+
+    items = []
+    for ie in pag.items:
+        items.append({
+            'id': ie.id,
+            'tipo': getattr(ie, 'tipo', None),
+            'monto': float(ie.monto) if getattr(ie, 'monto', None) is not None else None,
+            'mes': getattr(ie, 'mes', None),
+            'año': getattr(ie, 'año', None),
+            'estado': getattr(ie, 'estado', None),
+            'justificativo': getattr(ie, 'justificativo_archivo', None),
+            'fecha_creacion': ie.fecha_creacion.strftime('%Y-%m-%d') if getattr(ie, 'fecha_creacion', None) else None
+        })
+
+    return jsonify({
+        'items': items,
+        'page': pag.page,
+        'pages': pag.pages,
+        'per_page': pag.per_page,
+        'total': pag.total
+    })
+
+
+@rrhh_bp.route('/ingresos-extras/create', methods=['GET', 'POST'])
+@login_required
+@role_required(RoleEnum.RRHH)
+def crear_ingreso_extra():
+    """Formulario para crear un Ingreso Extra (bonificación/comisión) manualmente."""
+    # Asegurar carpeta de uploads
+    os.makedirs(INGRESOS_UPLOAD_FOLDER, exist_ok=True)
+
+    if request.method == 'POST':
+        try:
+            empleado_id = request.form.get('empleado_id')
+            tipo = request.form.get('tipo')
+            monto_raw = request.form.get('monto')
+            periodo = request.form.get('periodo')  # YYYY-MM
+            descripcion = request.form.get('descripcion')
+
+            if not empleado_id or not tipo or not monto_raw or not periodo:
+                flash('Faltan campos obligatorios', 'danger')
+                return redirect(request.url)
+
+            año, mes = map(int, periodo.split('-'))
+            monto = Decimal(monto_raw.replace(',', ''))
+
+            justificativo_filename = None
+            if 'justificativo' in request.files:
+                file = request.files['justificativo']
+                if file and allowed_file(file.filename):
+                    filename = secure_filename(file.filename)
+                    timestamp = int(datetime.utcnow().timestamp())
+                    filename = f"ingreso_{empleado_id}_{timestamp}_{filename}"
+                    filepath = os.path.join(INGRESOS_UPLOAD_FOLDER, filename)
+                    file.save(filepath)
+                    justificativo_filename = os.path.join('ingresos_extras', filename)
+
+            ingreso = IngresoExtra(
+                empleado_id=int(empleado_id),
+                tipo=tipo,
+                monto=monto,
+                mes=mes,
+                año=año,
+                descripcion=descripcion,
+                estado='PENDIENTE',
+                creado_por=current_user.id,
+                aplicado=False,
+                justificativo_archivo=justificativo_filename
+            )
+            db.session.add(ingreso)
+            db.session.commit()
+
+            registrar_bitacora(current_user, 'ingresos_extras', 'CREATE', 'ingresos_extras', detalle=f'Ingreso extra creado para empleado {empleado_id} monto {monto}')
+            flash('Ingreso extra creado correctamente (pendiente de aprobación)', 'success')
+            return redirect(url_for('rrhh.ver_ingresos_extras'))
+
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Error creando ingreso extra: {e}', 'danger')
+            return redirect(request.url)
+
+    # GET: mostrar formulario
+    empleado = None
+    empleado_id = request.args.get('empleado_id')
+    if empleado_id:
+        empleado = Empleado.query.get(empleado_id)
+
+    periodo_default = date.today().strftime('%Y-%m')
+    empleados = []
+    if not empleado:
+        empleados = Empleado.query.order_by(Empleado.apellido).all()
+    return render_template('rrhh/ingreso_extra_form.html', empleado=empleado, periodo_default=periodo_default, empleados=empleados)
+
+
+def _compute_horas_extra_for_month(empleado, year, month):
+    """Detecta horas extra desde AsistenciaEvento y crea/actualiza registros en HorasExtra."""
+    from calendar import monthrange
+    empresa = Empresa.query.first()
+    dias_habiles = empresa.dias_habiles_mes if empresa and empresa.dias_habiles_mes else 30
+    horas_jornada = 8
+    # fin jornada por defecto: 17:00
+    fin_jornada_hour = 17
+
+    primer_dia = date(year, month, 1)
+    ultimo_dia = date(year, month, monthrange(year, month)[1])
+
+    # obtener eventos out por día
+    curr = primer_dia
+    created = []
+    while curr <= ultimo_dia:
+        # solo considerar días laborales (lunes-viernes)
+        if curr.weekday() < 5:
+            # buscar último evento 'out' de ese día
+            ev = AsistenciaEvento.query.filter(
+                AsistenciaEvento.empleado_id == empleado.id,
+                func.date(AsistenciaEvento.ts) == curr,
+                AsistenciaEvento.tipo == 'out'
+            ).order_by(AsistenciaEvento.ts.desc()).first()
+
+            if ev:
+                # calcular diferencia en horas
+                fecha_fin_jornada = datetime(curr.year, curr.month, curr.day, fin_jornada_hour, 0, 0)
+                if ev.ts > fecha_fin_jornada:
+                    delta = ev.ts - fecha_fin_jornada
+                    horas_decimal = round(delta.total_seconds() / 3600.0, 4)
+
+                    # calcular monto
+                    salario_hora = float(empleado.salario_base) / float(dias_habiles) / float(horas_jornada)
+                    multiplicador = 1.5
+                    monto = round(horas_decimal * salario_hora * multiplicador)
+
+                    # crear o actualizar registro HorasExtra
+                    he = HorasExtra.query.filter_by(empleado_id=empleado.id, fecha=curr).first()
+                    if he:
+                        he.horas = horas_decimal
+                        he.monto_calculado = monto
+                        he.origen = 'asistencia'
+                    else:
+                        he = HorasExtra(
+                            empleado_id=empleado.id,
+                            fecha=curr,
+                            horas=horas_decimal,
+                            monto_calculado=monto,
+                            origen='asistencia',
+                            estado='PENDIENTE'
+                        )
+                        db.session.add(he)
+                        created.append(he)
+        curr = curr + timedelta(days=1)
+
+    if created:
+        db.session.commit()
+    return True
+
+
+@rrhh_bp.route('/api/ingresos-extras/employees', methods=['GET'])
+@login_required
+def api_ingresos_extras_employees():
+    """Devuelve lista de empleados con resumen de horas extras (mes actual por defecto)"""
+    periodo = request.args.get('periodo', date.today().strftime('%Y-%m'))  # YYYY-MM
+    año, mes = map(int, periodo.split('-'))
+
+    empleados = Empleado.query.order_by(Empleado.apellido, Empleado.nombre).all()
+    items = []
+    for e in empleados:
+        total_horas = db.session.query(func.coalesce(func.sum(HorasExtra.horas), 0)).filter(
+            HorasExtra.empleado_id == e.id,
+            func.extract('year', HorasExtra.fecha) == año,
+            func.extract('month', HorasExtra.fecha) == mes,
+            HorasExtra.estado == 'PENDIENTE'
+        ).scalar() or 0
+
+        pendientes = db.session.query(func.count(HorasExtra.id)).filter(
+            HorasExtra.empleado_id == e.id,
+            func.extract('year', HorasExtra.fecha) == año,
+            func.extract('month', HorasExtra.fecha) == mes,
+            HorasExtra.estado == 'PENDIENTE'
+        ).scalar() or 0
+
+        items.append({'id': e.id, 'nombre': e.nombre_completo, 'pendientes': int(pendientes), 'total_horas': float(total_horas)})
+
+    return jsonify({'items': items, 'periodo': periodo})
+
+
+@rrhh_bp.route('/api/empleados/<int:empleado_id>/horas-extras', methods=['GET'])
+@login_required
+def api_empleado_horas_extras(empleado_id):
+    """Devuelve horas extras de un empleado en un mes; si no hay registros intenta detectar desde eventos de asistencia."""
+    periodo = request.args.get('periodo', date.today().strftime('%Y-%m'))
+    año, mes = map(int, periodo.split('-'))
+
+    empleado = Empleado.query.get_or_404(empleado_id)
+
+    # intentar detectar/crear registros desde eventos de asistencia
+    _compute_horas_extra_for_month(empleado, año, mes)
+
+    horas = HorasExtra.query.filter(
+        HorasExtra.empleado_id == empleado_id,
+        func.extract('year', HorasExtra.fecha) == año,
+        func.extract('month', HorasExtra.fecha) == mes
+    ).order_by(HorasExtra.fecha.desc()).all()
+
+    items = []
+    for h in horas:
+        items.append({
+            'id': h.id,
+            'fecha': h.fecha.strftime('%d/%m/%Y'),
+            'horas': float(h.horas),
+            'monto': float(h.monto_calculado),
+            'estado': h.estado
+        })
+
+    return jsonify({'items': items, 'empleado': empleado.nombre_completo, 'periodo': periodo})
+
+
+@rrhh_bp.route('/horas-extra/<int:hora_id>/approve', methods=['POST'])
+@login_required
+@role_required(RoleEnum.RRHH)
+def aprobar_hora_extra(hora_id):
+    he = HorasExtra.query.get_or_404(hora_id)
+    try:
+        he.estado = 'APROBADO'
+        he.aprobado_por = current_user.id
+        he.fecha_aprobacion = datetime.utcnow()
+        db.session.commit()
+        return jsonify({'message': 'Hora extra aprobada'}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+
+@rrhh_bp.route('/horas-extra/<int:hora_id>/reject', methods=['POST'])
+@login_required
+@role_required(RoleEnum.RRHH)
+def rechazar_hora_extra(hora_id):
+    he = HorasExtra.query.get_or_404(hora_id)
+    try:
+        he.estado = 'RECHAZADO'
+        he.aprobado_por = current_user.id
+        he.fecha_aprobacion = datetime.utcnow()
+        db.session.commit()
+        return jsonify({'message': 'Hora extra rechazada'}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
 @rrhh_bp.route('/liquidaciones/generar', methods=['GET', 'POST'])
 @login_required
 @role_required(RoleEnum.RRHH)
@@ -837,12 +1468,26 @@ def generar_liquidacion():
                 salario_diario = empleado.salario_base / Decimal(30)
                 salario_base_ajustado = salario_diario * Decimal(str(dias_presentes))
                 
-                # Calcular ingresos extras
-                ingresos_extras = db.session.query(func.sum(IngresoExtra.monto)).filter(
+                # Calcular ingresos extras: incluir solo ingresos manuales APROBADOS y horas extra APROBADAS
+                ingresos_extras = db.session.query(func.coalesce(func.sum(IngresoExtra.monto), 0)).filter(
                     IngresoExtra.empleado_id == empleado.id,
                     IngresoExtra.mes == mes,
-                    IngresoExtra.año == año
+                    IngresoExtra.año == año,
+                    IngresoExtra.estado == 'APROBADO',
+                    IngresoExtra.aplicado == False
                 ).scalar() or Decimal('0')
+
+                # Sumar horas extra aprobadas y no aplicadas
+                horas_extra_total = db.session.query(func.coalesce(func.sum(HorasExtra.monto_calculado), 0)).filter(
+                    HorasExtra.empleado_id == empleado.id,
+                    func.extract('year', HorasExtra.fecha) == año,
+                    func.extract('month', HorasExtra.fecha) == mes,
+                    HorasExtra.estado == 'APROBADO',
+                    HorasExtra.aplicado == False
+                ).scalar() or Decimal('0')
+
+                # Asegurar Decimal y sumar
+                ingresos_extras = Decimal(str(ingresos_extras)) + Decimal(str(horas_extra_total))
                 
                 # Calcular descuentos
                 descuentos = db.session.query(func.sum(Descuento.monto)).filter(
@@ -870,6 +1515,31 @@ def generar_liquidacion():
                 )
                 
                 db.session.add(liquidacion)
+
+                # Marcar los IngresoExtra aplicados (APROBADOS y no aplicados)
+                ingresos_a_aplicar = IngresoExtra.query.filter_by(
+                    empleado_id=empleado.id,
+                    mes=mes,
+                    año=año,
+                    estado='APROBADO',
+                    aplicado=False
+                ).all()
+                for ie in ingresos_a_aplicar:
+                    ie.aplicado = True
+                    ie.fecha_aplicacion = datetime.utcnow()
+
+                # Marcar HorasExtra aplicadas (APROBADO y no aplicadas)
+                horas_a_aplicar = HorasExtra.query.filter(
+                    HorasExtra.empleado_id == empleado.id,
+                    func.extract('year', HorasExtra.fecha) == año,
+                    func.extract('month', HorasExtra.fecha) == mes,
+                    HorasExtra.estado == 'APROBADO',
+                    HorasExtra.aplicado == False
+                ).all()
+                for he in horas_a_aplicar:
+                    he.aplicado = True
+                    he.fecha_aplicacion = datetime.utcnow()
+
                 contador += 1
             
             db.session.commit()
@@ -1919,7 +2589,22 @@ def api_empleado_general(empleado_id):
     
     # Resumen de asistencia de hoy
     resumen_hoy = _resumir_dia_asistencias(empleado_id, date.today())
-
+    # Ingresos extras recientes (últimos 5)
+    try:
+        ingresos_q = IngresoExtra.query.filter_by(empleado_id=empleado_id).order_by(IngresoExtra.fecha_creacion.desc()).limit(5).all()
+    except Exception:
+        ingresos_q = []
+    ingresos_list = []
+    for ie in ingresos_q:
+        ingresos_list.append({
+            'id': ie.id,
+            'tipo': getattr(ie, 'tipo', None),
+            'monto': float(ie.monto) if getattr(ie, 'monto', None) is not None else None,
+            'mes': getattr(ie, 'mes', None),
+            'año': getattr(ie, 'año', None),
+            'estado': getattr(ie, 'estado', None),
+            'justificativo': getattr(ie, 'justificativo_archivo', None)
+        })
     return jsonify({
         'id': empleado.id,
         'codigo': empleado.codigo,
@@ -2103,24 +2788,34 @@ def api_empleado_liquidaciones(empleado_id):
 # ===================== UPLOADS: Permisos y Sanciones =====================
 @rrhh_bp.route('/permisos/<int:permiso_id>/upload-justificativo', methods=['POST'])
 @login_required
-@role_required(RoleEnum.RRHH)
 def upload_permiso_justificativo(permiso_id):
     """Recibe un multipart/form-data con campo 'file' y lo asocia al permiso"""
+    print(f"\n=== DEBUG upload_permiso_justificativo ===")
+    print(f"Permiso ID: {permiso_id}")
+    print(f"request.files keys: {list(request.files.keys())}")
+    print(f"request.method: {request.method}")
+    print(f"request.content_type: {request.content_type}")
+    
     permiso = Permiso.query.get_or_404(permiso_id)
 
     # aceptar 'file' o 'justificativo' como nombre de campo para compatibilidad
     if 'file' in request.files:
         file = request.files['file']
+        print(f"Archivo encontrado en 'file'")
     elif 'justificativo' in request.files:
         file = request.files['justificativo']
+        print(f"Archivo encontrado en 'justificativo'")
     else:
+        print(f"ERROR: No se encontró archivo en request.files")
         return jsonify({'error': 'No se recibió ningún archivo (campo "file" o "justificativo" esperado)'}), 400
 
     if not file or file.filename == '':
+        print(f"ERROR: file vacío o sin nombre")
         return jsonify({'error': 'No se seleccionó ningún archivo'}), 400
 
     filename_clean = secure_filename(file.filename)
     if not allowed_file(filename_clean):
+        print(f"ERROR: Extensión no permitida: {filename_clean}")
         return jsonify({'error': 'Extensión de archivo no permitida'}), 400
 
     os.makedirs(PERMISOS_UPLOAD_FOLDER, exist_ok=True)
@@ -2128,9 +2823,11 @@ def upload_permiso_justificativo(permiso_id):
     filepath = os.path.join(PERMISOS_UPLOAD_FOLDER, filename)
     file.save(filepath)
 
-    # Guardar ruta relativa desde la carpeta 'app'
-    permiso.justificativo_archivo = os.path.relpath(filepath, os.path.dirname(os.path.dirname(__file__)))
+    # Guardar solo "permisos/archivo.pdf" porque serve_uploads ya agrega "uploads/"
+    permiso.justificativo_archivo = f"permisos/{filename}"
     db.session.commit()
+    
+    print(f"✓ Archivo guardado - Permiso {permiso_id}, ruta: {permiso.justificativo_archivo}, archivo existe: {os.path.exists(filepath)}")
 
     registrar_operacion_crud(current_user, 'permisos', 'UPDATE', 'permisos', permiso.id, {'justificativo': permiso.justificativo_archivo})
 
@@ -2173,6 +2870,240 @@ def upload_sancion_justificativo(sancion_id):
 
 
 # ===================== MÓDULO POSTULANTES (RECLUTAMIENTO) =====================
+
+@rrhh_bp.route('/anticipos/create', methods=['POST'])
+@login_required
+def crear_anticipo():
+    """Crear un anticipo para un empleado"""
+    print("=== INICIO crear_anticipo ===")
+    print(f"Content-Type: {request.content_type}")
+    print(f"Method: {request.method}")
+    print(f"Data: {request.data}")
+    print(f"Is JSON: {request.is_json}")
+    
+    try:
+        # Obtener datos de JSON
+        data = request.get_json(force=True, silent=False)
+        print(f"JSON data parseado: {data}")
+        
+        empleado_id = data.get('empleado_id')
+        monto = data.get('monto')
+        observaciones = data.get('observaciones')
+
+        print(f"Parámetros: empleado_id={empleado_id}, monto={monto}, observaciones={observaciones}")
+
+        if not empleado_id or monto is None:
+            print("ERROR: Faltan parámetros requeridos")
+            return jsonify({'error': 'empleado_id y monto son requeridos'}), 400
+
+        empleado = Empleado.query.get(int(empleado_id))
+        if not empleado:
+            print(f"ERROR: Empleado {empleado_id} no encontrado")
+            return jsonify({'error': 'Empleado no encontrado'}), 404
+
+        # No permitir anticipos mayores al salario base
+        monto_dec = Decimal(str(monto))
+        print(f"Monto: {monto_dec}, Salario base: {empleado.salario_base}")
+        
+        if monto_dec > empleado.salario_base:
+            print(f"ERROR: Anticipo mayor que salario")
+            return jsonify({'error': 'El anticipo no puede ser mayor al salario base'}), 400
+
+        anticipo = Anticipo(
+            empleado_id=empleado.id,
+            monto=monto_dec,
+            observaciones=observaciones
+        )
+        db.session.add(anticipo)
+        db.session.commit()
+        print(f"✓ Anticipo creado: ID={anticipo.id}")
+
+        registrar_operacion_crud(current_user, 'anticipos', 'CREATE', 'anticipos', anticipo.id, {'empleado_id': empleado.id, 'monto': str(monto_dec)})
+
+        return jsonify({'message': 'anticipo creado', 'id': anticipo.id}), 200
+    except Exception as e:
+        db.session.rollback()
+        print(f"❌ EXCEPTION: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
+@rrhh_bp.route('/api/empleados/<int:empleado_id>/anticipos', methods=['GET'])
+@login_required
+def api_empleado_anticipos(empleado_id):
+    """API: listar anticipos de un empleado"""
+    empleado = Empleado.query.get_or_404(empleado_id)
+    pagina = request.args.get('page', 1, type=int)
+    por_pagina = request.args.get('per_page', 12, type=int)
+    query = Anticipo.query.filter_by(empleado_id=empleado_id).order_by(desc(Anticipo.fecha_solicitud))
+    paginated = query.paginate(page=pagina, per_page=por_pagina)
+
+    items = [{
+        'id': a.id,
+        'monto': float(a.monto),
+        'fecha_solicitud': a.fecha_solicitud.strftime('%d/%m/%Y %H:%M:%S'),
+        'aprobado': a.aprobado,
+        'rechazado': getattr(a, 'rechazado', False),
+        'fecha_rechazo': a.fecha_rechazo.strftime('%d/%m/%Y %H:%M:%S') if getattr(a, 'fecha_rechazo', None) else None,
+        'aplicado': a.aplicado,
+        'justificativo': a.justificativo_archivo
+    } for a in paginated.items]
+
+    return jsonify({'items': items, 'total': paginated.total, 'pages': paginated.pages, 'current_page': pagina, 'per_page': por_pagina})
+
+
+@rrhh_bp.route('/anticipos/<int:anticipo_id>/approve', methods=['POST'])
+@login_required
+def aprobar_anticipo(anticipo_id):
+    """Aprobar anticipo y generar PDF de recibo"""
+    anticipo = Anticipo.query.get_or_404(anticipo_id)
+    try:
+        anticipo.aprobado = True
+        anticipo.aprobado_por = current_user.id
+        anticipo.fecha_aprobacion = datetime.utcnow()
+        db.session.commit()
+
+        # Generar PDF simple con reportlab
+        os.makedirs(ANTICIPOS_UPLOAD_FOLDER, exist_ok=True)
+        filename = secure_filename(f"anticipo_{anticipo_id}_{int(datetime.utcnow().timestamp())}.pdf")
+        filepath = os.path.join(ANTICIPOS_UPLOAD_FOLDER, filename)
+
+        from reportlab.lib.pagesizes import A4
+        from reportlab.pdfgen import canvas
+
+        # Obtener datos de la empresa
+        empresa = Empresa.query.first()
+        
+        c = canvas.Canvas(filepath, pagesize=A4)
+        
+        # Header con datos de empresa
+        y_pos = 800
+        if empresa:
+            c.setFont('Helvetica-Bold', 12)
+            c.drawString(50, y_pos, empresa.nombre or 'EMPRESA')
+            y_pos -= 15
+            
+            c.setFont('Helvetica', 9)
+            if empresa.ruc:
+                c.drawString(50, y_pos, f'RUC: {empresa.ruc}')
+                y_pos -= 12
+            if empresa.direccion:
+                c.drawString(50, y_pos, f'Dirección: {empresa.direccion}')
+                y_pos -= 12
+            if empresa.telefono:
+                c.drawString(50, y_pos, f'Teléfono: {empresa.telefono}')
+                y_pos -= 12
+            if empresa.email:
+                c.drawString(50, y_pos, f'Email: {empresa.email}')
+                y_pos -= 12
+        
+        y_pos -= 10
+        
+        # Título
+        c.setFont('Helvetica-Bold', 14)
+        c.drawString(50, y_pos, 'RECIBO DE ANTICIPO')
+        y_pos -= 20
+        
+        # Datos del empleado
+        c.setFont('Helvetica', 10)
+        empleado = anticipo.empleado
+        c.drawString(50, y_pos, f'Empleado: {empleado.nombre_completo}')
+        y_pos -= 15
+        
+        c.drawString(50, y_pos, f'CI: {empleado.ci}')
+        y_pos -= 15
+        
+        c.drawString(50, y_pos, f'Monto: ₲ {float(anticipo.monto):,.0f}')
+        y_pos -= 15
+        
+        c.drawString(50, y_pos, f'Fecha Aprobación: {anticipo.fecha_aprobacion.strftime("%d/%m/%Y %H:%M:%S")}')
+        y_pos -= 15
+        
+        if anticipo.observaciones:
+            c.drawString(50, y_pos, f'Observaciones: {anticipo.observaciones}')
+            y_pos -= 15
+        
+        y_pos -= 20
+        
+        # Firmas
+        c.drawString(50, y_pos, 'Firma Empleado: _______________________')
+        y_pos -= 30
+        
+        c.drawString(50, y_pos, 'Firma RRHH: ___________________________')
+        
+        if empresa and empresa.representante_legal:
+            y_pos -= 30
+            c.drawString(50, y_pos, f'Firma Representante: _______________________')
+            y_pos -= 15
+            c.setFont('Helvetica', 8)
+            c.drawString(50, y_pos, f'{empresa.representante_legal}')
+        
+        c.save()
+
+        anticipo.justificativo_archivo = f"anticipos/{filename}"
+        db.session.commit()
+
+        registrar_operacion_crud(current_user, 'anticipos', 'UPDATE', 'anticipos', anticipo.id, {'aprobado': True})
+
+        return jsonify({'message': 'anticipo aprobado', 'ruta_pdf': anticipo.justificativo_archivo}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+
+@rrhh_bp.route('/anticipos/<int:anticipo_id>/reject', methods=['POST'])
+@login_required
+def rechazar_anticipo(anticipo_id):
+    """Rechazar anticipo"""
+    anticipo = Anticipo.query.get_or_404(anticipo_id)
+    try:
+        anticipo.rechazado = True
+        anticipo.rechazado_por = current_user.id
+        anticipo.fecha_rechazo = datetime.utcnow()
+        db.session.commit()
+
+        registrar_operacion_crud(current_user, 'anticipos', 'UPDATE', 'anticipos', anticipo.id, {'rechazado': True})
+
+        return jsonify({'message': 'anticipo rechazado'}), 200
+    except Exception as e:
+        db.session.rollback()
+        print(f"❌ Error rechazando anticipo: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+
+@rrhh_bp.route('/anticipos/<int:anticipo_id>/upload-justificativo', methods=['POST'])
+@login_required
+def upload_anticipo_justificativo(anticipo_id):
+    """Subir justificativo para anticipo"""
+    anticipo = Anticipo.query.get_or_404(anticipo_id)
+
+    if 'file' in request.files:
+        file = request.files['file']
+    elif 'justificativo' in request.files:
+        file = request.files['justificativo']
+    else:
+        return jsonify({'error': 'No se recibió ningún archivo (campo "file" o "justificativo" esperado)'}), 400
+
+    if not file or file.filename == '':
+        return jsonify({'error': 'No se seleccionó ningún archivo'}), 400
+
+    filename_clean = secure_filename(file.filename)
+    if not allowed_file(filename_clean):
+        return jsonify({'error': 'Extensión de archivo no permitida'}), 400
+
+    os.makedirs(ANTICIPOS_UPLOAD_FOLDER, exist_ok=True)
+    filename = secure_filename(f"antic_{anticipo_id}_{int(datetime.utcnow().timestamp())}_{filename_clean}")
+    filepath = os.path.join(ANTICIPOS_UPLOAD_FOLDER, filename)
+    file.save(filepath)
+
+    anticipo.justificativo_archivo = f"anticipos/{filename}"
+    db.session.commit()
+
+    registrar_operacion_crud(current_user, 'anticipos', 'UPDATE', 'anticipos', anticipo.id, {'justificativo': anticipo.justificativo_archivo})
+
+    return jsonify({'message': 'uploaded', 'ruta': anticipo.justificativo_archivo}), 200
+
 
 @rrhh_bp.route('/postulantes')
 @login_required
