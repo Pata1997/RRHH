@@ -53,6 +53,17 @@
 
                         <div class="row mb-3">
                             <div class="col-md-6">
+                                <label for="nacionalidad" class="form-label">Nacionalidad</label>
+                                <input type="text" class="form-control" id="nacionalidad" name="nacionalidad" value="{{ empleado.nacionalidad or 'Paraguay' }}">
+                            </div>
+                            <div class="col-md-6">
+                                <label for="ips_numero" class="form-label">Número IPS</label>
+                                <input type="text" class="form-control" id="ips_numero" name="ips_numero" value="{{ empleado.ips_numero or '' }}">
+                            </div>
+                        </div>
+
+                        <div class="row mb-3">
+                            <div class="col-md-6">
                                 <label for="sexo" class="form-label">Sexo</label>
                                 <select class="form-control" id="sexo" name="sexo">
                                     <option value="">Seleccionar</option>
@@ -101,6 +112,13 @@
                                     <option value="INACTIVO" {% if empleado.estado.name == 'INACTIVO' %}selected{% endif %}>Inactivo</option>
                                     <option value="SUSPENDIDO" {% if empleado.estado.name == 'SUSPENDIDO' %}selected{% endif %}>Suspendido</option>
                                 </select>
+                            </div>
+                        </div>
+
+                        <div class="row mb-3">
+                            <div class="col-md-12">
+                                <label for="motivo_retiro" class="form-label">Motivo retiro (si aplica)</label>
+                                <input type="text" class="form-control" id="motivo_retiro" name="motivo_retiro" value="{{ empleado.motivo_retiro or '' }}">
                             </div>
                         </div>
 

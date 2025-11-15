@@ -1,0 +1,170 @@
+{% extends "base.html" %}
+
+{% block title %}Editar Empresa - Sistema RRHH{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <h2><i class="bi bi-building"></i> Editar Empresa</h2>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-body">
+            <form method="POST" action="{{ url_for('rrhh.editar_empresa', empresa_id=empresa.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
+
+                <ul class="nav nav-tabs mb-4" id="empresaTab" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="general-tab" data-bs-toggle="tab" 
+                                data-bs-target="#general" type="button" role="tab" aria-controls="general" 
+                                aria-selected="true">
+                            <i class="bi bi-info-circle"></i> Información General
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="ips-tab" data-bs-toggle="tab" 
+                                data-bs-target="#ips" type="button" role="tab" aria-controls="ips" 
+                                aria-selected="false">
+                            <i class="bi bi-calculator"></i> IPS y Aportes
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="contacto-tab" data-bs-toggle="tab" 
+                                data-bs-target="#contacto" type="button" role="tab" aria-controls="contacto" 
+                                aria-selected="false">
+                            <i class="bi bi-telephone"></i> Contacto
+                        </button>
+                    </li>
+                </ul>
+
+                <div class="tab-content" id="empresaTabContent">
+                    <!-- Tab: Información General -->
+                    <div class="tab-pane fade show active" id="general" role="tabpanel" aria-labelledby="general-tab">
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label for="nombre" class="form-label">Nombre de la Empresa</label>
+                                <input type="text" class="form-control" id="nombre" name="nombre" 
+                                       value="{{ empresa.nombre }}" required>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="ruc" class="form-label">RUC</label>
+                                <input type="text" class="form-control" id="ruc" name="ruc" 
+                                       value="{{ empresa.ruc or '' }}">
+                            </div>
+                        </div>
+
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label for="razon_social" class="form-label">Razón Social</label>
+                                <input type="text" class="form-control" id="razon_social" name="razon_social" 
+                                       value="{{ empresa.razon_social or '' }}">
+                            </div>
+                            <div class="col-md-6">
+                                <label for="numero_patronal" class="form-label">
+                                    <span style="color: red;">*</span> Número Patronal
+                                </label>
+                                <input type="text" class="form-control {% if not empresa.numero_patronal %}border-danger{% endif %}" 
+                                       id="numero_patronal" name="numero_patronal" 
+                                       value="{{ empresa.numero_patronal or '' }}" required 
+                                       placeholder="Ej: 123456-7">
+                                <small class="form-text text-muted d-block mt-2">
+                                    <i class="bi bi-exclamation-circle"></i> 
+                                    Este número es <strong>obligatorio</strong> para generar las planillas IPS/REI.
+                                </small>
+                            </div>
+                        </div>
+
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label for="ciudad" class="form-label">Ciudad</label>
+                                <input type="text" class="form-control" id="ciudad" name="ciudad" 
+                                       value="{{ empresa.ciudad or '' }}">
+                            </div>
+                            <div class="col-md-6">
+                                <label for="direccion" class="form-label">Dirección</label>
+                                <input type="text" class="form-control" id="direccion" name="direccion" 
+                                       value="{{ empresa.direccion or '' }}">
+                            </div>
+                        </div>
+
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label for="representante_legal" class="form-label">Representante Legal</label>
+                                <input type="text" class="form-control" id="representante_legal" name="representante_legal" 
+                                       value="{{ empresa.representante_legal or '' }}">
+                            </div>
+                            <div class="col-md-6">
+                                <label for="ci_representante" class="form-label">CI Representante</label>
+                                <input type="text" class="form-control" id="ci_representante" name="ci_representante" 
+                                       value="{{ empresa.ci_representante or '' }}">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tab: IPS y Aportes -->
+                    <div class="tab-pane fade" id="ips" role="tabpanel" aria-labelledby="ips-tab">
+                        <div class="alert alert-info" role="alert">
+                            <i class="bi bi-info-circle"></i> 
+                            Estos porcentajes se utilizan automáticamente en el cálculo de aportes IPS.
+                        </div>
+
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label for="porcentaje_ips_empleado" class="form-label">
+                                    Porcentaje IPS Empleado (%)
+                                </label>
+                                <input type="number" class="form-control" id="porcentaje_ips_empleado" 
+                                       name="porcentaje_ips_empleado" step="0.01" 
+                                       value="{{ empresa.porcentaje_ips_empleado or '9.00' }}">
+                                <small class="form-text text-muted d-block mt-2">
+                                    Descuento que se retiene del salario del empleado (generalmente 9%)
+                                </small>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="porcentaje_ips_empleador" class="form-label">
+                                    Porcentaje IPS Empleador (%)
+                                </label>
+                                <input type="number" class="form-control" id="porcentaje_ips_empleador" 
+                                       name="porcentaje_ips_empleador" step="0.01" 
+                                       value="{{ empresa.porcentaje_ips_empleador or '16.50' }}">
+                                <small class="form-text text-muted d-block mt-2">
+                                    Contribución que realiza la empresa (generalmente 16.5%)
+                                </small>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tab: Contacto -->
+                    <div class="tab-pane fade" id="contacto" role="tabpanel" aria-labelledby="contacto-tab">
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label for="telefono" class="form-label">Teléfono</label>
+                                <input type="text" class="form-control" id="telefono" name="telefono" 
+                                       value="{{ empresa.telefono or '' }}">
+                            </div>
+                            <div class="col-md-6">
+                                <label for="email" class="form-label">Email</label>
+                                <input type="email" class="form-control" id="email" name="email" 
+                                       value="{{ empresa.email or '' }}">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row mt-4">
+                    <div class="col-md-12">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-check-circle"></i> Guardar Cambios
+                        </button>
+                        <a href="{{ url_for('rrhh.listar_empresas') }}" class="btn btn-secondary">
+                            <i class="bi bi-x-circle"></i> Cancelar
+                        </a>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -157,11 +157,16 @@
                         {{ empleado.estado.value }}
                     </span>
                 </p>
+                <p><strong>Nacionalidad:</strong> {{ empleado.nacionalidad or 'N/D' }}</p>
+                <p><strong>IPS:</strong> {{ empleado.ips_numero or 'N/D' }}</p>
             </div>
             <div class="text-end">
                 <p><strong>Código:</strong> {{ empleado.codigo }}</p>
                 <p><strong>Ingreso:</strong> {{ empleado.fecha_ingreso.strftime('%d/%m/%Y') if empleado.fecha_ingreso else 'N/A' }}</p>
                 <p><strong>Antigüedad:</strong> {{ empleado.antiguedad_texto if empleado.fecha_ingreso else 'N/A' }}</p>
+                {% if empleado.motivo_retiro %}
+                <p><strong>Motivo retiro:</strong> {{ empleado.motivo_retiro }}</p>
+                {% endif %}
             </div>
             <a href="{{ url_for('rrhh.listar_empleados') }}" class="btn btn-outline-secondary">
                 <i class="bi bi-arrow-left"></i> Volver
@@ -299,7 +304,11 @@
                 <div class="tab-pane fade" id="contratos" role="tabpanel">
                     <div class="d-flex justify-content-between mb-3">
                         <h5>Contratos</h5>
+                        {% if not read_only %}
                         <a href="{{ url_for('rrhh.contrato_nuevo', empleado_id=empleado.id) }}" class="btn btn-primary btn-sm">Nuevo Contrato</a>
+                        {% else %}
+                        <button class="btn btn-secondary btn-sm" disabled>Solo lectura</button>
+                        {% endif %}
                     </div>
                     <div>
                         {% if empleado.contratos %}
@@ -344,7 +353,10 @@
 
 <script>
     const empleadoId = {{ empleado.id }};
-    const isRRHH = true;  // Permitir a cualquiera que acceda esta página
+    // Bandera de solo-lectura (si el empleado está INACTIVO)
+    const isReadOnly = {{ 'true' if read_only else 'false' }};
+    // isRRHH se usa en el JS para mostrar controles; desactivarlo en modo solo-lectura
+    const isRRHH = {{ 'false' if read_only else 'true' }};
     const csrfToken = "{{ csrf_token() }}";  // Token CSRF para peticiones AJAX
     
     // Al cambiar tabs, cargar datos

@@ -31,10 +31,14 @@
                             <i class="bi bi-speedometer2"></i> Dashboard
                         </a>
                     </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('rrhh.planillas_mtess') }}">
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
                             <i class="bi bi-file-earmark-spreadsheet"></i> Planillas
                         </a>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="{{ url_for('rrhh.planillas_mtess') }}">MTESS</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('rrhh.planillas_ips_rei') }}">IPS / REI</a></li>
+                        </ul>
                     </li>
                     
                     {% if current_user.rol.name == 'RRHH' %}

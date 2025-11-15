@@ -1,0 +1,36 @@
+{% extends 'base.html' %}
+
+{% block title %}Planillas - RRHH{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <h3><i class="bi bi-list-ul"></i> Planillas</h3>
+            <p class="text-muted">Elija el tipo de planilla que desea generar.</p>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-6">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h5 class="card-title"><i class="bi bi-file-earmark-excel"></i> MTESS</h5>
+                    <p class="card-text">Planillas relacionadas con MTESS (informes de personal, etc.).</p>
+                    <a href="{{ url_for('rrhh.planillas_mtess') }}" class="btn btn-outline-primary">Abrir MTESS</a>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-6">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h5 class="card-title"><i class="bi bi-building"></i> IPS / REI</h5>
+                    <p class="card-text">Generar planilla IPS/REI para envío al sistema del IPS.</p>
+                    <a href="{{ url_for('rrhh.planillas_ips_rei') }}" class="btn btn-outline-primary">Abrir IPS/REI</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

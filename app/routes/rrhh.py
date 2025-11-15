@@ -127,6 +127,8 @@ def crear_empleado():
                 email=request.form.get('email'),
                 telefono=request.form.get('telefono'),
                 direccion=request.form.get('direccion'),
+                nacionalidad=request.form.get('nacionalidad'),
+                ips_numero=request.form.get('ips_numero'),
                 sexo=request.form.get('sexo'),
                 fecha_nacimiento=request.form.get('fecha_nacimiento') and datetime.strptime(request.form.get('fecha_nacimiento'), '%Y-%m-%d').date()
             )
@@ -165,6 +167,9 @@ def editar_empleado(empleado_id):
             empleado.email = request.form.get('email')
             empleado.telefono = request.form.get('telefono')
             empleado.direccion = request.form.get('direccion')
+            empleado.nacionalidad = request.form.get('nacionalidad')
+            empleado.ips_numero = request.form.get('ips_numero')
+            empleado.motivo_retiro = request.form.get('motivo_retiro')
             empleado.sexo = request.form.get('sexo')
             empleado.estado = EstadoEmpleadoEnum[request.form.get('estado')]
             
@@ -407,6 +412,223 @@ def planillas_mtess_download():
 
     return send_file(out, as_attachment=True, download_name=filename, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
+
+# ===================== PLANILLAS IPS/REI =====================
+@rrhh_bp.route('/planillas/ips-rei', methods=['GET'])
+@login_required
+@role_required(RoleEnum.RRHH)
+def planillas_ips_rei():
+    """Vista para generar planilla IPS/REI (usa la empresa única del sistema)"""
+    hoy = date.today()
+    empresa = Empresa.query.first()
+    return render_template('planillas/ips_rei.html', current_year=hoy.year, empresa=empresa)
+
+
+@rrhh_bp.route('/planillas/ips-rei/download', methods=['GET'])
+@login_required
+@role_required(RoleEnum.RRHH)
+def planillas_ips_rei_download():
+    """Descargar planilla IPS/REI en formato Excel exacto"""
+    from ..ips_utils import generar_fila_planilla_ips
+
+    mes = request.args.get('mes', type=int)
+    anio = request.args.get('anio', type=int)
+
+    if not all([mes, anio]):
+        flash('Mes y año son requeridos', 'danger')
+        return redirect(url_for('rrhh.planillas_ips_rei'))
+
+    # Obtener la empresa configurada
+    empresa = Empresa.query.first()
+    if not empresa:
+        flash('No hay empresa configurada en el sistema', 'danger')
+        return redirect(url_for('rrhh.planillas_ips_rei'))
+
+    # Validar numero patronal
+    if not empresa.numero_patronal:
+        flash(f'⚠️ La empresa "{empresa.nombre}" no tiene número patronal configurado. Por favor, agregalo antes de generar la planilla.', 'danger')
+        return redirect(url_for('rrhh.planillas_ips_rei'))
+
+    # Periodo
+    periodo = f"{anio}-{mes:02d}"
+
+    # Obtener liquidaciones del mes SOLO para empleados ACTIVOS
+    liquidaciones = Liquidacion.query.filter(
+        Liquidacion.periodo == periodo,
+        Liquidacion.empleado.has(Empleado.estado == EstadoEmpleadoEnum.ACTIVO)
+    ).all()
+
+    if not liquidaciones:
+        flash(f'No hay liquidaciones de empleados ACTIVOS para {periodo}', 'warning')
+        return redirect(url_for('rrhh.planillas_ips_rei'))
+
+    # Validar que todos los empleados tengan ips_numero
+    empleados_sin_ips = [liq for liq in liquidaciones if not liq.empleado.ips_numero]
+    if empleados_sin_ips:
+        nombres_sin_ips = ', '.join([e.empleado.nombre_completo for e in empleados_sin_ips])
+        flash(f'⚠️ Los siguientes empleados no tienen número IPS asignado: {nombres_sin_ips}', 'warning')
+        # Continuamos de todas formas (pero mostramos la advertencia)
+
+    # Crear workbook
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'REI'
+
+    # Headers exactos según formato IPS/REI
+    headers = [
+        'Numero Patronal',
+        'RUC Empresa',
+        'Razon Social',
+        'Numero Hoja',
+        'Cedula',
+        'Numero Asegurado',
+        'Apellidos',
+        'Nombres',
+        'Dias Trabajados',
+        'Salario Imponible',
+        'Categoria',
+        'Codigo Situacion',
+        'Total Trabajadores (Hoja)',
+        'Total Salario Imponible (Hoja)',
+        'Aporte Empleado',
+        'Aporte Empleador',
+        'Total Aporte'
+    ]
+    ws.append(headers)
+
+    # Agregar filas de datos
+    total_trabajadores = len(liquidaciones)
+    total_salario_imponible = sum(float(l.salario_base or 0) for l in liquidaciones)
+
+    numero_hoja = 1
+    filas_por_hoja = 50
+    fila_actual = 0
+
+    for liq in liquidaciones:
+        # Si superamos filas_por_hoja, crear nueva hoja
+        if fila_actual >= filas_por_hoja:
+            numero_hoja += 1
+            ws = wb.create_sheet(f'REI_{numero_hoja}')
+            ws.append(headers)
+            fila_actual = 0
+
+        fila = generar_fila_planilla_ips(liq.empleado, liq, empresa)
+        fila['numero_hoja'] = numero_hoja
+
+        ws.append([
+            fila['numero_patronal'],
+            fila['ruc_empresa'],
+            fila['razon_social'],
+            fila['numero_hoja'],
+            fila['cedula'],
+            fila['numero_asegurado'],
+            fila['apellidos'],
+            fila['nombres'],
+            fila['dias_trabajados'],
+            fila['salario_imponible'],
+            fila['categoria'],
+            fila['codigo_situacion'],
+            total_trabajadores,
+            total_salario_imponible,
+            fila['aporte_empleado'],
+            fila['aporte_empleador'],
+            fila['total_aporte'],
+        ])
+        fila_actual += 1
+
+    # Generar archivo en memoria
+    out = IOBytes()
+    wb.save(out)
+    out.seek(0)
+
+
+    filename = f"REI_{empresa.nombre.replace(' ', '_')}_{periodo}.xlsx"
+
+    # Registrar en bitácora
+    try:
+        registrar_bitacora(
+            current_user, 'planillas', 'DOWNLOAD', 'planillas_ips_rei',
+            None, json.dumps({'periodo': periodo})
+        )
+    except Exception as e:
+        print('Error bitacora planillas IPS/REI:', e)
+
+    return send_file(
+        out,
+        as_attachment=True,
+        download_name=filename,
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
+
+
+# ===================== EMPRESAS =====================
+@rrhh_bp.route('/empresas', methods=['GET'])
+@login_required
+@role_required(RoleEnum.RRHH)
+def listar_empresas():
+    """Lista todas las empresas"""
+    registrar_bitacora(current_user, 'empresas', 'VIEW', 'empresas')
+    empresas = Empresa.query.all()
+    return render_template('rrhh/empresas.html', empresas=empresas)
+
+
+@rrhh_bp.route('/empresas/<int:empresa_id>/editar', methods=['GET', 'POST'])
+@login_required
+@role_required(RoleEnum.RRHH)
+def editar_empresa(empresa_id):
+    """Editar empresa (número patronal, etc.)"""
+    empresa = Empresa.query.get_or_404(empresa_id)
+    
+    if request.method == 'POST':
+        try:
+            empresa.nombre = request.form.get('nombre') or empresa.nombre
+            empresa.ruc = request.form.get('ruc') or empresa.ruc
+            empresa.razon_social = request.form.get('razon_social') or empresa.razon_social
+            empresa.numero_patronal = request.form.get('numero_patronal')
+            empresa.direccion = request.form.get('direccion')
+            empresa.telefono = request.form.get('telefono')
+            empresa.email = request.form.get('email')
+            empresa.ciudad = request.form.get('ciudad')
+            empresa.representante_legal = request.form.get('representante_legal')
+            empresa.ci_representante = request.form.get('ci_representante')
+            
+            # Porcentajes IPS
+            ips_emp_str = request.form.get('porcentaje_ips_empleado')
+            ips_empr_str = request.form.get('porcentaje_ips_empleador')
+            
+            if ips_emp_str:
+                try:
+                    empresa.porcentaje_ips_empleado = Decimal(ips_emp_str)
+                except:
+                    pass
+            
+            if ips_empr_str:
+                try:
+                    empresa.porcentaje_ips_empleador = Decimal(ips_empr_str)
+                except:
+                    pass
+            
+            db.session.commit()
+            
+            registrar_operacion_crud(
+                current_user, 'empresas', 'UPDATE', 'empresas',
+                empresa_id, {
+                    'nombre': empresa.nombre,
+                    'numero_patronal': empresa.numero_patronal,
+                    'cambios': 'Datos de empresa actualizados'
+                }
+            )
+            
+            flash(f'Empresa "{empresa.nombre}" actualizada exitosamente', 'success')
+            return redirect(url_for('rrhh.listar_empresas'))
+        
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Error al actualizar empresa: {str(e)}', 'danger')
+    
+    return render_template('rrhh/editar_empresa.html', empresa=empresa)
+
+
 # ==================== CARGOS ====================
 @rrhh_bp.route('/cargos', methods=['GET'])
 @login_required
@@ -512,73 +734,77 @@ def eliminar_cargo(cargo_id):
     return redirect(url_for('rrhh.listar_cargos'))
 
 # ==================== EMPRESA ====================
-@rrhh_bp.route('/empresa', methods=['GET'])
+@rrhh_bp.route('/empresa', methods=['GET', 'POST'])
 @login_required
 @role_required(RoleEnum.RRHH)
 def ver_empresa():
-    """Ver/editar datos de la empresa"""
+    """Ver y editar datos de la empresa (configuración única)"""
     empresa = Empresa.query.first()
     if not empresa:
         empresa = Empresa(nombre='Mi Empresa')
         db.session.add(empresa)
         db.session.commit()
-    
+
+    if request.method == 'POST':
+        try:
+            empresa.nombre = request.form.get('nombre') or empresa.nombre
+            empresa.ruc = request.form.get('ruc') or empresa.ruc
+            empresa.razon_social = request.form.get('razon_social') or empresa.razon_social
+            # Número patronal editable desde la UI
+            empresa.numero_patronal = request.form.get('numero_patronal') or empresa.numero_patronal
+            empresa.direccion = request.form.get('direccion') or empresa.direccion
+            empresa.telefono = request.form.get('telefono') or empresa.telefono
+            empresa.email = request.form.get('email') or empresa.email
+            empresa.ciudad = request.form.get('ciudad') or empresa.ciudad
+            empresa.representante_legal = request.form.get('representante_legal') or empresa.representante_legal
+            empresa.ci_representante = request.form.get('ci_representante') or empresa.ci_representante
+
+            # Porcentajes IPS (opcional)
+            ips_emp_str = request.form.get('porcentaje_ips_empleado')
+            ips_empr_str = request.form.get('porcentaje_ips_empleador')
+            if ips_emp_str:
+                try:
+                    empresa.porcentaje_ips_empleado = Decimal(ips_emp_str)
+                except:
+                    pass
+            if ips_empr_str:
+                try:
+                    empresa.porcentaje_ips_empleador = Decimal(ips_empr_str)
+                except:
+                    pass
+
+            # dias_habiles_mes
+            if request.form.get('dias_habiles_mes'):
+                try:
+                    empresa.dias_habiles_mes = int(request.form.get('dias_habiles_mes'))
+                except:
+                    pass
+
+            # Logo upload (optional)
+            if 'logo' in request.files:
+                file = request.files['logo']
+                if file and allowed_file(file.filename):
+                    filename = secure_filename(f"logo_{int(datetime.utcnow().timestamp())}.{file.filename.rsplit('.', 1)[1].lower()}")
+                    logo_path = os.path.join(UPLOADS_ROOT, 'empresa')
+                    os.makedirs(logo_path, exist_ok=True)
+                    file.save(os.path.join(logo_path, filename))
+                    empresa.logo_path = f"empresa/{filename}"
+
+            db.session.commit()
+
+            registrar_operacion_crud(
+                current_user, 'empresa', 'UPDATE', 'empresas', 
+                empresa.id, {'nombre': empresa.nombre, 'numero_patronal': empresa.numero_patronal}
+            )
+
+            flash('Datos de la empresa actualizados exitosamente', 'success')
+            return redirect(url_for('rrhh.ver_empresa'))
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Error al actualizar empresa: {str(e)}', 'danger')
+
     registrar_bitacora(current_user, 'empresa', 'VIEW', 'empresas')
     return render_template('rrhh/empresa.html', empresa=empresa)
-
-@rrhh_bp.route('/empresa/editar', methods=['POST'])
-@login_required
-@role_required(RoleEnum.RRHH)
-def editar_empresa():
-    """Editar datos de la empresa"""
-    empresa = Empresa.query.first()
-    if not empresa:
-        empresa = Empresa()
-        db.session.add(empresa)
-    
-    try:
-        empresa.nombre = request.form.get('nombre')
-        empresa.ruc = request.form.get('ruc')
-        empresa.razon_social = request.form.get('razon_social')
-        empresa.direccion = request.form.get('direccion')
-        empresa.ciudad = request.form.get('ciudad')
-        empresa.pais = request.form.get('pais', 'Paraguay')
-        empresa.telefono = request.form.get('telefono')
-        empresa.email = request.form.get('email')
-        empresa.representante_legal = request.form.get('representante_legal')
-        empresa.ci_representante = request.form.get('ci_representante')
-        
-        # Porcentajes
-        if request.form.get('porcentaje_ips_empleado'):
-            empresa.porcentaje_ips_empleado = Decimal(request.form.get('porcentaje_ips_empleado'))
-        if request.form.get('porcentaje_ips_empleador'):
-            empresa.porcentaje_ips_empleador = Decimal(request.form.get('porcentaje_ips_empleador'))
-        if request.form.get('dias_habiles_mes'):
-            empresa.dias_habiles_mes = int(request.form.get('dias_habiles_mes'))
-        
-        # Subir logo si viene un archivo
-        if 'logo' in request.files:
-            file = request.files['logo']
-            if file and allowed_file(file.filename):
-                filename = secure_filename(f"logo_{int(datetime.utcnow().timestamp())}.{file.filename.rsplit('.', 1)[1].lower()}")
-                logo_path = os.path.join(UPLOADS_ROOT, 'empresa')
-                os.makedirs(logo_path, exist_ok=True)
-                file.save(os.path.join(logo_path, filename))
-                empresa.logo_path = f"empresa/{filename}"
-        
-        db.session.commit()
-        
-        registrar_operacion_crud(
-            current_user, 'empresa', 'UPDATE', 'empresas', 
-            empresa.id, {'nombre': empresa.nombre}
-        )
-        
-        flash('Datos de la empresa actualizados exitosamente', 'success')
-    except Exception as e:
-        db.session.rollback()
-        flash(f'Error al actualizar empresa: {str(e)}', 'danger')
-    
-    return redirect(url_for('rrhh.ver_empresa'))
 
 # ==================== ASISTENCIA ====================
 @rrhh_bp.route('/asistencia', methods=['GET'])
@@ -2042,7 +2268,7 @@ def generar_liquidacion_despido(empleado_id, tipo_despido, causal=None, descripc
     fecha_despido = date.today()
     
     # Calcular antigüedad
-    antiguedad = calcular_antiguedad_años(empleado.fecha_contratacion, fecha_despido)
+    antiguedad = calcular_antiguedad_años(empleado.fecha_ingreso, fecha_despido)
     
     # 1. Indemnización
     indemnizacion = calcular_indemnizacion(empleado.salario_base, tipo_despido, antiguedad)
@@ -2088,6 +2314,10 @@ def generar_liquidacion_despido(empleado_id, tipo_despido, causal=None, descripc
     )
     db.session.add(liquidacion)
     despido.liquidaciones.append(liquidacion)  # Relación inversa
+    
+    # Cambiar estado del empleado a INACTIVO
+    empleado.estado = EstadoEmpleadoEnum.INACTIVO
+    empleado.fecha_retiro = fecha_despido
     
     db.session.commit()
     
@@ -2159,7 +2389,7 @@ def ver_liquidacion_despido(liquidacion_id):
     
     despido = liquidacion.despido
     empleado = liquidacion.empleado
-    antiguedad = calcular_antiguedad_años(empleado.fecha_contratacion, despido.fecha_despido)
+    antiguedad = calcular_antiguedad_años(empleado.fecha_ingreso, despido.fecha_despido)
     
     return render_template(
         'rrhh/liquidacion_despido.html',
@@ -2211,9 +2441,9 @@ def descargar_pdf_liquidacion_despido(liquidacion_id):
     # Datos empleado
     data = [
         ['EMPLEADO:', empleado.nombre],
-        ['CÉDULA:', empleado.cedula],
+        ['CÉDULA:', empleado.ci],
         ['CARGO:', empleado.cargo.nombre if empleado.cargo else '---'],
-        ['ANTIGÜEDAD:', f"{calcular_antiguedad_años(empleado.fecha_contratacion, despido.fecha_despido)} años"],
+        ['ANTIGÜEDAD:', f"{calcular_antiguedad_años(empleado.fecha_ingreso, despido.fecha_despido)} años"],
         ['TIPO DESPIDO:', despido.tipo.upper()],
         ['CAUSAL:', despido.causal.upper() if despido.causal else '---'],
     ]
@@ -2343,7 +2573,7 @@ def generar_aguinaldos_anual(año, mes_corte=None, día_corte=None):
             fecha_inicio_año = date(año, 1, 1)
             
             # Si el empleado fue contratado después del inicio del año, usar fecha de contratación
-            fecha_desde = max(fecha_inicio_año, empleado.fecha_contratacion)
+            fecha_desde = max(fecha_inicio_año, empleado.fecha_ingreso)
             
             # Si el empleado se retiró antes del corte, usar fecha de retiro
             fecha_hasta = fecha_corte
@@ -2486,7 +2716,7 @@ def generar_aguinaldos():
             empleados = Empleado.query.filter_by(estado=EstadoEmpleadoEnum.ACTIVO).all()
             
             for empleado in empleados:
-                fecha_desde = max(date(año, 1, 1), empleado.fecha_contratacion)
+                fecha_desde = max(date(año, 1, 1), empleado.fecha_ingreso)
                 fecha_hasta = fecha_corte
                 if empleado.fecha_retiro and empleado.fecha_retiro < fecha_corte:
                     fecha_hasta = empleado.fecha_retiro
@@ -2549,8 +2779,10 @@ def perfil_empleado(empleado_id):
     """Muestra el perfil/legajo completo del empleado"""
     empleado = Empleado.query.get_or_404(empleado_id)
     registrar_bitacora(current_user, 'empleados', 'VIEW', 'empleados', empleado_id, 'ver_perfil')
-    
-    return render_template('rrhh/empleado_perfil.html', empleado=empleado)
+    # Si el empleado está Inactivo, habilitar modo solo-lectura en la vista
+    read_only = (empleado.estado == EstadoEmpleadoEnum.INACTIVO)
+
+    return render_template('rrhh/empleado_perfil.html', empleado=empleado, read_only=read_only)
 
 @rrhh_bp.route('/api/empleados/<int:empleado_id>/general', methods=['GET'])
 @login_required

@@ -1,0 +1,129 @@
+{% extends 'base.html' %}
+
+{% block title %}Planillas IPS/REI{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <h3><i class="bi bi-file-earmark-excel"></i> Generar Planilla IPS/REI</h3>
+            <p class="text-muted">Descarga la planilla mensual en formato exacto para subir al sistema REI del IPS (Paraguay).</p>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-body">
+                        <form method="GET" action="{{ url_for('rrhh.planillas_ips_rei_download') }}">
+                            <div class="row mb-3">
+                                <div class="col-md-12">
+                                    <label class="form-label"><strong>Empresa</strong></label>
+                                    {% if empresa %}
+                                        <div>
+                                            <span class="badge bg-secondary">{{ empresa.nombre }}</span>
+                                            <small class="ms-2">Patronal: <strong>{{ empresa.numero_patronal or 'SIN ASIGNAR' }}</strong></small>
+                                            <small class="ms-2">RUC: <strong>{{ empresa.ruc or 'N/D' }}</strong></small>
+                                        </div>
+                                    {% else %}
+                                        <div class="text-danger">No hay empresa configurada en el sistema.</div>
+                                    {% endif %}
+                                </div>
+                            </div>
+
+                            <div class="row mb-3">
+                                <div class="col-md-3">
+                                    <label class="form-label"><strong>Año *</strong></label>
+                                    <input type="number" name="anio" class="form-control" value="{{ current_year }}" required min="2020" max="2100">
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label"><strong>Mes *</strong></label>
+                                    <select name="mes" class="form-select" required>
+                                        <option value="">Seleccionar</option>
+                                        <option value="1">Enero</option>
+                                        <option value="2">Febrero</option>
+                                        <option value="3">Marzo</option>
+                                        <option value="4">Abril</option>
+                                        <option value="5">Mayo</option>
+                                        <option value="6">Junio</option>
+                                        <option value="7">Julio</option>
+                                        <option value="8">Agosto</option>
+                                        <option value="9">Septiembre</option>
+                                        <option value="10">Octubre</option>
+                                        <option value="11">Noviembre</option>
+                                        <option value="12">Diciembre</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-6 d-flex align-items-end">
+                                    <button type="submit" class="btn btn-success w-100">
+                                        <i class="bi bi-download"></i> Generar y Descargar
+                                    </button>
+                                </div>
+                            </div>
+
+                        <hr>
+                        <div class="alert alert-info small" role="alert">
+                            <strong>ℹ️ Formato de salida:</strong>
+                            <ul class="mb-0">
+                                <li>Excel (.xlsx) sin estilos ni fórmulas</li>
+                                <li>Incluye solo empleados <strong>ACTIVOS</strong></li>
+                                <li>Máximo 50 empleados por hoja (múltiples hojas si es necesario)</li>
+                                <li>Utiliza <strong>Categoría IPS</strong> de cada cargo</li>
+                                <li>Aportes calculados automáticamente (empleado + empleador)</li>
+                            </ul>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="card bg-light border-warning">
+                <div class="card-body">
+                    <h6 class="card-title text-warning"><i class="bi bi-exclamation-triangle"></i> Requisitos</h6>
+                    <ul class="small mb-0">
+                        <li>✓ Empresa con <strong>Número Patronal</strong> asignado</li>
+                        <li>✓ Empleados con <strong>Número IPS</strong> registrado</li>
+                        <li>✓ Cargos con <strong>Categoría IPS</strong> configurada</li>
+                        <li>✓ Liquidaciones generadas para el mes/año</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="card mt-3 bg-info bg-opacity-10">
+                <div class="card-body">
+                    <h6 class="card-title"><i class="bi bi-info-circle"></i> Columnas del Excel</h6>
+                    <p class="small mb-0">
+                        Numero Patronal, RUC, Razón Social, Nro Hoja, Cédula, Nro Asegurado, Apellidos, Nombres, 
+                        Días Trabajados, Salario Imponible, Categoría, Código Situación, Total Trabajadores, 
+                        Total Salario, Aporte Empleado, Aporte Empleador, Total Aporte
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Actualizar número patronal y RUC al cambiar empresa
+document.getElementById('empresa-select').addEventListener('change', function() {
+    const option = this.options[this.selectedIndex];
+    const patronal = option.dataset.patronal || 'N/D';
+    const ruc = option.dataset.ruc || 'N/D';
+    
+    const patronalBadge = document.getElementById('patronal-value');
+    const rucBadge = document.getElementById('ruc-value');
+    
+    if (patronal === 'SIN ASIGNAR') {
+        patronalBadge.classList.remove('bg-secondary');
+        patronalBadge.classList.add('bg-danger');
+    } else {
+        patronalBadge.classList.remove('bg-danger');
+        patronalBadge.classList.add('bg-secondary');
+    }
+    
+    patronalBadge.textContent = patronal;
+    rucBadge.textContent = ruc;
+});
+</script>
+{% endblock %}

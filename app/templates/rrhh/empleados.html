@@ -118,6 +118,12 @@ function eliminarEmpleado(id) {
             const form = document.createElement('form');
             form.method = 'POST';
             form.action = '{{ url_for("rrhh.eliminar_empleado", empleado_id=0) }}'.replace('0', id);
+            // Agregar token CSRF requerido por Flask-WTF
+            const csrfInput = document.createElement('input');
+            csrfInput.type = 'hidden';
+            csrfInput.name = 'csrf_token';
+            csrfInput.value = '{{ csrf_token() }}';
+            form.appendChild(csrfInput);
             document.body.appendChild(form);
             form.submit();
         }

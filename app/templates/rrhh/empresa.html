@@ -18,7 +18,7 @@
                     <h5 class="mb-0">Datos de la Empresa</h5>
                 </div>
                 <div class="card-body">
-                    <form method="POST" action="{{ url_for('rrhh.editar_empresa') }}" enctype="multipart/form-data">
+                    <form method="POST" action="{{ url_for('rrhh.ver_empresa') }}" enctype="multipart/form-data">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}" />
                         <!-- Datos Básicos -->
                         <div class="section-title mb-3">
@@ -33,6 +33,14 @@
                             <div class="col-md-6">
                                 <label class="form-label">RUC</label>
                                 <input type="text" name="ruc" class="form-control" value="{{ empresa.ruc or '' }}" placeholder="Ej: 80123456-7">
+                            </div>
+                        </div>
+
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label">Número Patronal</label>
+                                <input type="text" name="numero_patronal" class="form-control" value="{{ empresa.numero_patronal or '' }}" placeholder="Ej: 123456-7">
+                                <small class="form-text text-muted">Necesario para generar planillas IPS/REI.</small>
                             </div>
                         </div>
 

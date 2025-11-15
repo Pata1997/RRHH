@@ -13,11 +13,11 @@
             <div class="card shadow-sm">
                 <div class="card-body">
                     <form method="POST" class="needs-validation" id="formDespido">
-                        {{ csrf_token() }}
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         
                         <!-- Seleccionar empleado -->
                         <div class="form-group mb-3">
-                            <label for="empleado_id" class="form-label fw-bold">Empleado</label>
+                            <label for="empleado_id" class="form-label fw-bold">Seleccionar Empleado</label>
                             <select id="empleado_id" name="empleado_id" class="form-control" required onchange="cargar_datos_empleado()">
                                 <option value="">-- Seleccionar empleado --</option>
                                 {% for emp in empleados %}
@@ -70,37 +70,6 @@
                             <small class="form-text text-muted">Campo opcional pero recomendado para auditoría</small>
                         </div>
                         
-                        <!-- Vista previa de cálculos -->
-                        <div id="div_preview_calculos" style="display:none;" class="alert alert-light border-info">
-                            <h5 class="mb-3">📊 Preview de Cálculos</h5>
-                            <table class="table table-sm table-borderless">
-                                <tr>
-                                    <td><strong>Indemnización:</strong></td>
-                                    <td class="text-end"><span id="preview_indemnizacion">$0.00</span></td>
-                                </tr>
-                                <tr>
-                                    <td><strong>Aguinaldo (13º):</strong></td>
-                                    <td class="text-end"><span id="preview_aguinaldo">$0.00</span></td>
-                                </tr>
-                                <tr>
-                                    <td><strong>Vacaciones:</strong></td>
-                                    <td class="text-end"><span id="preview_vacaciones">$0.00</span></td>
-                                </tr>
-                                <tr class="table-active">
-                                    <td><strong>Subtotal:</strong></td>
-                                    <td class="text-end"><strong><span id="preview_subtotal">$0.00</span></strong></td>
-                                </tr>
-                                <tr>
-                                    <td><strong>(-) Aporte IPS (9%):</strong></td>
-                                    <td class="text-end"><span id="preview_ips">-$0.00</span></td>
-                                </tr>
-                                <tr style="background-color: #d4edda;">
-                                    <td><strong>TOTAL NETO:</strong></td>
-                                    <td class="text-end"><strong style="font-size:1.2em;"><span id="preview_neto">$0.00</span></strong></td>
-                                </tr>
-                            </table>
-                        </div>
-                        
                         <!-- Botones -->
                         <div class="d-flex gap-2">
                             <button type="submit" class="btn btn-danger btn-lg">
@@ -115,8 +84,42 @@
             </div>
         </div>
         
-        <!-- Panel de información -->
+        <!-- Panel de información (Derecha) -->
         <div class="col-md-4">
+            <!-- Preview de Cálculos (SIEMPRE VISIBLE) -->
+            <div id="div_preview_calculos" style="display:none; top: 20px;" class="card bg-light border-success mb-3 sticky-top">
+                <div class="card-body">
+                    <h5 class="card-title">📊 Preview de Cálculos</h5>
+                    <hr>
+                    <table class="table table-sm table-borderless">
+                        <tr>
+                            <td><strong>Indemnización:</strong></td>
+                            <td class="text-end"><span id="preview_indemnizacion">$0.00</span></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Aguinaldo (13º):</strong></td>
+                            <td class="text-end"><span id="preview_aguinaldo">$0.00</span></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Vacaciones:</strong></td>
+                            <td class="text-end"><span id="preview_vacaciones">$0.00</span></td>
+                        </tr>
+                        <tr class="table-active">
+                            <td><strong>Subtotal:</strong></td>
+                            <td class="text-end"><strong><span id="preview_subtotal">$0.00</span></strong></td>
+                        </tr>
+                        <tr>
+                            <td><strong>(-) Aporte IPS (9%):</strong></td>
+                            <td class="text-end"><span id="preview_ips">-$0.00</span></td>
+                        </tr>
+                        <tr style="background-color: #d4edda;">
+                            <td><strong>TOTAL NETO:</strong></td>
+                            <td class="text-end"><strong style="font-size:1.2em;"><span id="preview_neto">$0.00</span></strong></td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+            
             <div class="card bg-light mb-3">
                 <div class="card-body">
                     <h5 class="card-title">ℹ️ Tipos de Despido</h5>
@@ -152,6 +155,14 @@ function cargar_datos_empleado() {
     
     if (option.value === '') {
         document.getElementById('div_datos_empleado').style.display = 'none';
+        document.getElementById('div_preview_calculos').style.display = 'none';
+        // Limpiar preview cuando no hay empleado seleccionado
+        document.getElementById('preview_indemnizacion').textContent = '$0.00';
+        document.getElementById('preview_aguinaldo').textContent = '$0.00';
+        document.getElementById('preview_vacaciones').textContent = '$0.00';
+        document.getElementById('preview_subtotal').textContent = '$0.00';
+        document.getElementById('preview_ips').textContent = '-$0.00';
+        document.getElementById('preview_neto').textContent = '$0.00';
         return;
     }
     
@@ -167,6 +178,7 @@ function cargar_datos_empleado() {
     document.getElementById('span_fecha_ingreso').textContent = fechaContrata.toLocaleDateString('es-PY');
     document.getElementById('div_datos_empleado').style.display = 'block';
     
+    // Siempre recalcular cuando cambia el empleado
     calcular_indemnizacion();
 }
 
@@ -180,16 +192,25 @@ function calcular_indemnizacion() {
     const select = document.getElementById('empleado_id');
     const option = select.options[select.selectedIndex];
     
-    if (option.value === '') return;
+    // Si no hay empleado, no hacer nada
+    if (!option.value) return;
     
-    const salario = parseFloat(option.getAttribute('data-salario'));
-    const fechaContrata = new Date(option.getAttribute('data-fecha-ingreso'));
+    const salario = parseFloat(option.getAttribute('data-salario')) || 0;
+    const fechaIngreso = option.getAttribute('data-fecha-ingreso');
+    
+    if (!fechaIngreso || salario <= 0) {
+        console.log('Datos incompletos:', {fechaIngreso, salario});
+        return;
+    }
+    
+    const fechaContrata = new Date(fechaIngreso);
     const hoy = new Date();
     const antiguedad = Math.floor((hoy - fechaContrata) / (365.25 * 24 * 60 * 60 * 1000));
     const tipo = document.getElementById('tipo').value;
     
     let indemnizacion = 0;
     
+    // Calcular indemnización según tipo (si se seleccionó)
     if (tipo === 'justificado') {
         indemnizacion = 0;
     } else if (tipo === 'injustificado') {
@@ -197,10 +218,11 @@ function calcular_indemnizacion() {
         const meses = Math.min(1 + antiguedad, 12);
         indemnizacion = meses * salario;
     }
+    // Si tipo está vacío, indemnización = 0 (es preview provisional)
     
-    // Aguinaldo proporcional (días trabajados en año / 30 / 12 × salario)
+    // Aguinaldo proporcional (respecto al año calendario actual)
     const inicioAño = new Date(hoy.getFullYear(), 0, 1);
-    const díasTrabajados = (hoy - inicioAño) / (24 * 60 * 60 * 1000) + 1;
+    const díasTrabajados = Math.floor((hoy - inicioAño) / (24 * 60 * 60 * 1000)) + 1;
     const mesesTrabajados = díasTrabajados / 30;
     const aguinaldo = (mesesTrabajados / 12) * salario;
     
@@ -217,7 +239,7 @@ function calcular_indemnizacion() {
     // Neto
     const neto = subtotal - aportes;
     
-    // Mostrar preview
+    // Actualizar preview en tiempo real
     document.getElementById('preview_indemnizacion').textContent = '$' + indemnizacion.toLocaleString('es-PY', {minimumFractionDigits: 2});
     document.getElementById('preview_aguinaldo').textContent = '$' + aguinaldo.toLocaleString('es-PY', {minimumFractionDigits: 2});
     document.getElementById('preview_vacaciones').textContent = '$' + vacacionesMonto.toLocaleString('es-PY', {minimumFractionDigits: 2});
@@ -225,6 +247,7 @@ function calcular_indemnizacion() {
     document.getElementById('preview_ips').textContent = '-$' + aportes.toLocaleString('es-PY', {minimumFractionDigits: 2});
     document.getElementById('preview_neto').textContent = '$' + neto.toLocaleString('es-PY', {minimumFractionDigits: 2});
     
+    // Mostrar el preview
     document.getElementById('div_preview_calculos').style.display = 'block';
 }
 </script>

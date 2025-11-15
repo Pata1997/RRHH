@@ -22,6 +22,15 @@ function mostrarErrorEnContenedor(elemento, mensaje) {
     `;
 }
 
+// Helper: mostrar alerta simple si existe mostrarError, sino alert()
+function accesoRestringido() {
+    if (typeof mostrarError === 'function') {
+        mostrarError('Acceso restringido', 'Perfil en modo solo lectura: no se permiten acciones.');
+    } else {
+        alert('Perfil en modo solo lectura: no se permiten acciones.');
+    }
+}
+
 function formatearMoneda(valor) {
     return new Intl.NumberFormat('es-PY', {
         style: 'currency',
@@ -100,6 +109,7 @@ function cargarGeneral() {
 // Aprobar / Rechazar Ingreso Extra desde el perfil
 // Usar modales personalizados para confirmación y actualizar la lista al confirmar
 window.abrirConfirmAprobar = function(ingresoId) {
+    if (typeof isReadOnly !== 'undefined' && isReadOnly) return accesoRestringido();
     console.log('abrirConfirmAprobar llamado con ID:', ingresoId);
     mostrarConfirmacion('Aprobar Ingreso Extra', '¿Confirma aprobar este ingreso extra?', function() {
         console.log('Usuario confirmó aprobar');
@@ -147,6 +157,7 @@ window.abrirConfirmAprobar = function(ingresoId) {
 }
 
 window.abrirConfirmRechazar = function(ingresoId) {
+    if (typeof isReadOnly !== 'undefined' && isReadOnly) return accesoRestringido();
     console.log('abrirConfirmRechazar llamado con ID:', ingresoId);
     mostrarConfirmacion('Rechazar Ingreso Extra', '¿Confirma rechazar este ingreso extra?', function() {
         console.log('Usuario confirmó rechazar');
@@ -376,8 +387,8 @@ function cargarPermisos(pagina) {
                                 <td>${p.con_goce}</td>
                                 <td>
                                     ${p.justificativo ? `<a href="/rrhh/${p.justificativo}" download class="btn btn-sm btn-outline-success">Descargar</a>` : ''}
-                                    <input type="file" id="perm-file-${p.id}" style="display:none" onchange="uploadPermisoJustificativo(${p.id})">
-                                    <button class="btn btn-sm btn-secondary" onclick="document.getElementById('perm-file-${p.id}').click()">Subir</button>
+                                    ${ (typeof isReadOnly === 'undefined' || !isReadOnly) ? (`<input type="file" id="perm-file-${p.id}" style="display:none" onchange="uploadPermisoJustificativo(${p.id})">
+                                    <button class="btn btn-sm btn-secondary" onclick="document.getElementById('perm-file-${p.id}').click()">Subir</button>`) : '' }
                                 </td>
                                 <td><span class="badge bg-${p.estado === 'Aprobado' ? 'success' : (p.estado === 'Rechazado' ? 'danger' : 'warning')}">${p.estado}</span></td>
                     </tr>
@@ -449,8 +460,8 @@ function cargarSanciones(pagina) {
                         <td>${s.descripcion}</td>
                         <td>
                             ${s.justificativo ? `<a href="/rrhh/${s.justificativo}" target="_blank" class="btn btn-sm btn-outline-primary">Ver</a>` : ''}
-                            <input type="file" id="sanc-file-${s.id}" style="display:none" onchange="uploadSancionJustificativo(${s.id})">
-                            <button class="btn btn-sm btn-secondary" onclick="document.getElementById('sanc-file-${s.id}').click()">Subir</button>
+                            ${ (typeof isReadOnly === 'undefined' || !isReadOnly) ? (`<input type="file" id="sanc-file-${s.id}" style="display:none" onchange="uploadSancionJustificativo(${s.id})">
+                            <button class="btn btn-sm btn-secondary" onclick="document.getElementById('sanc-file-${s.id}').click()">Subir</button>`) : '' }
                         </td>
                     </tr>
                 `;
@@ -484,6 +495,7 @@ function cargarSanciones(pagina) {
 
 // ========== UPLOADS: Permisos / Sanciones ==========
 function uploadPermisoJustificativo(permisoId) {
+    if (typeof isReadOnly !== 'undefined' && isReadOnly) return accesoRestringido();
     const input = document.getElementById(`perm-file-${permisoId}`);
     if (!input || !input.files || input.files.length === 0) return;
 
@@ -506,6 +518,7 @@ function uploadPermisoJustificativo(permisoId) {
 }
 
 function uploadSancionJustificativo(sancionId) {
+    if (typeof isReadOnly !== 'undefined' && isReadOnly) return accesoRestringido();
     const input = document.getElementById(`sanc-file-${sancionId}`);
     if (!input || !input.files || input.files.length === 0) return;
 
@@ -608,7 +621,10 @@ function cargarAnticipos(pagina) {
     fetch(`/rrhh/api/empleados/${empleadoId}/anticipos?page=${pagina}`)
         .then(r => r.json())
         .then(data => {
-            let html = `
+            let html = '';
+            // Mostrar formulario de solicitud solo si NO es solo lectura
+            if (typeof isReadOnly === 'undefined' || !isReadOnly) {
+                html = `
                 <div class="mb-4">
                     <div class="card">
                         <div class="card-header bg-light">
@@ -636,6 +652,9 @@ function cargarAnticipos(pagina) {
                     </div>
                 </div>
             `;
+            } else {
+                html = '<div class="alert alert-secondary">Perfil en modo solo lectura: no se permiten solicitudes de adelanto</div>';
+            }
 
             if (data.items.length === 0) {
                 html += '<div class="alert alert-info">No hay anticipos registrados</div>';
@@ -771,6 +790,7 @@ function showFetchError(err) {
 }
 
 function crearAnticipo() {
+    if (typeof isReadOnly !== 'undefined' && isReadOnly) return accesoRestringido();
     const monto = document.getElementById('anticipos-monto').value;
     const obs = document.getElementById('anticipos-obs').value;
 
@@ -808,6 +828,7 @@ function crearAnticipo() {
 
 
 function uploadAnticipoJustificativo(anticipoId) {
+    if (typeof isReadOnly !== 'undefined' && isReadOnly) return accesoRestringido();
     const input = document.getElementById('antic-file-' + anticipoId);
     if (!input || !input.files || input.files.length === 0) return;
     const file = input.files[0];
@@ -832,6 +853,7 @@ function uploadAnticipoJustificativo(anticipoId) {
 }
 
 function aprobarAnticipo(anticipoId) {
+    if (typeof isReadOnly !== 'undefined' && isReadOnly) return accesoRestringido();
     mostrarConfirmacion(
         'Aprobar Anticipo',
         '¿Estás seguro de que deseas aprobar este anticipo y generar el recibo PDF?',
@@ -869,6 +891,7 @@ function aprobarAnticipo(anticipoId) {
 }
 
 function rechazarAnticipo(anticipoId) {
+    if (typeof isReadOnly !== 'undefined' && isReadOnly) return accesoRestringido();
     mostrarConfirmacion(
         'Rechazar Anticipo',
         '¿Estás seguro de que deseas rechazar este anticipo?',

@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+
+{% block title %}Planilla IPS (REI) - Sistema RRHH{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="row mb-4">
+        <div class="col-12">
+            <h2><i class="bi bi-file-earmark-spreadsheet"></i> Planilla IPS (REI)</h2>
+            <p class="text-muted">Genera el archivo de reporte de empleados e ingresos (REI) para IPS con cálculo automático de aportes.</p>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-lg-6">
+            <div class="card">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0">Parámetros de Generación</h5>
+                </div>
+                <div class="card-body">
+                    <form id="formPlanillaIPS" method="GET" action="{{ url_for('rrhh.planillas_ips_download') }}">
+                        <div class="alert alert-info" role="alert">
+                            <i class="bi bi-info-circle"></i> 
+                            Se incluirán solo empleados con estado <strong>ACTIVO</strong> en el período seleccionado.
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="anio" class="form-label">Año *</label>
+                            <input type="number" id="anio" name="anio" class="form-control" 
+                                   value="{{ current_year }}" min="2020" required>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="mes" class="form-label">Mes *</label>
+                            <select id="mes" name="mes" class="form-control" required>
+                                <option value="">-- Seleccionar mes --</option>
+                                <option value="01">Enero</option>
+                                <option value="02">Febrero</option>
+                                <option value="03">Marzo</option>
+                                <option value="04">Abril</option>
+                                <option value="05">Mayo</option>
+                                <option value="06">Junio</option>
+                                <option value="07">Julio</option>
+                                <option value="08">Agosto</option>
+                                <option value="09">Setiembre</option>
+                                <option value="10">Octubre</option>
+                                <option value="11">Noviembre</option>
+                                <option value="12">Diciembre</option>
+                            </select>
+                        </div>
+
+                        <div class="alert alert-warning" role="alert">
+                            <i class="bi bi-exclamation-triangle"></i> 
+                            Asegúrate de que:
+                            <ul class="mb-0 mt-2">
+                                <li>El <strong>Número Patronal IPS</strong> de tu empresa está configurado.</li>
+                                <li>Los <strong>Números de Afiliación IPS</strong> de los empleados están cargados.</li>
+                                <li>Las <strong>Categorías IPS</strong> de los cargos están definidas.</li>
+                                <li>Existen <strong>Liquidaciones</strong> registradas para el período.</li>
+                            </ul>
+                        </div>
+
+                        <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                            <a href="{{ url_for('main.dashboard') }}" class="btn btn-secondary">
+                                <i class="bi bi-x-circle"></i> Cancelar
+                            </a>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="bi bi-download"></i> Generar Planilla IPS
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-6">
+            <div class="card">
+                <div class="card-header bg-light">
+                    <h5 class="mb-0">Información del Reporte</h5>
+                </div>
+                <div class="card-body">
+                    <h6>Formato REI (Reporte de Empleados e Ingresos)</h6>
+                    <p class="text-muted">El archivo Excel generado incluye:</p>
+                    
+                    <div class="mb-3">
+                        <strong>Datos de la Empresa:</strong>
+                        <ul class="mb-0">
+                            <li>Número Patronal IPS</li>
+                            <li>RUC</li>
+                            <li>Razón Social</li>
+                        </ul>
+                    </div>
+
+                    <div class="mb-3">
+                        <strong>Por cada empleado ACTIVO:</strong>
+                        <ul class="mb-0">
+                            <li>Cédula de identidad</li>
+                            <li>Número de afiliación IPS</li>
+                            <li>Nombres y apellidos</li>
+                            <li>Días trabajados en el período</li>
+                            <li>Salario imponible (base)</li>
+                            <li>Categoría laboral IPS</li>
+                            <li>Código de situación (01=Activo)</li>
+                        </ul>
+                    </div>
+
+                    <div class="mb-3">
+                        <strong>Cálculos automáticos:</strong>
+                        <ul class="mb-0">
+                            <li>Aporte del empleado (9% de salario)</li>
+                            <li>Aporte del empleador (16.5% de salario)</li>
+                            <li>Totales por período</li>
+                        </ul>
+                    </div>
+
+                    <hr>
+                    <small class="text-muted">
+                        <i class="bi bi-info-circle"></i> 
+                        Este reporte es válido solo para empleados en estado ACTIVO. 
+                        Los despidos y retiros se procesan en liquidaciones separadas.
+                    </small>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .alert ul {
+        padding-left: 20px;
+    }
+</style>
+{% endblock %}

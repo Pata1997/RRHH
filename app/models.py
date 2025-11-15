@@ -71,6 +71,7 @@ class Empresa(db.Model):
     ciudad = db.Column(db.String(100))
     representante_legal = db.Column(db.String(255))  # Nombre del representante
     ci_representante = db.Column(db.String(20))  # CI del representante
+    numero_patronal = db.Column(db.String(50))  # Número patronal asignado por IPS
     
     # Configuraciones de cálculos
     porcentaje_ips_empleado = db.Column(db.Numeric(5, 2), default=9.00)  # 9%
@@ -122,6 +123,10 @@ class Empleado(db.Model):
     fecha_nacimiento = db.Column(db.Date)
     sexo = db.Column(db.String(1))  # M/F
     direccion = db.Column(db.String(255))
+    # Nuevos campos añadidos en migración SQL
+    nacionalidad = db.Column(db.String(100))
+    ips_numero = db.Column(db.String(50))
+    motivo_retiro = db.Column(db.String(255))
     
     # Auditoría
     fecha_creacion = db.Column(db.DateTime, default=datetime.utcnow)
