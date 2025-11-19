@@ -9,6 +9,7 @@ Una aplicación web completa para la gestión de recursos humanos desarrollada c
 - Información personal y laboral completa
 - Estados de empleado (Activo, Inactivo, Suspendido, Jubilado)
 - Búsqueda y filtrado de empleados
+- **Perfil detallado con métricas de asistencias y justificaciones** 🆕
 
 ### 2. **Gestión de Cargos**
 - CRUD de cargos
@@ -20,6 +21,9 @@ Una aplicación web completa para la gestión de recursos humanos desarrollada c
 - Interfaz simple para escaneo rápido
 - Bitácora completa de asistencias
 - Edición manual de registros
+- **Cierre automático a las 17:30** 🆕
+- **Justificaciones con estados (Pendiente/Justificado/Injustificado)** 🆕
+- **API de métricas de asistencias por empleado** 🆕
 
 ### 4. **Gestión de Permisos**
 - Solicitud de permisos (enfermedad, asunto personal, etc.)
@@ -31,50 +35,87 @@ Una aplicación web completa para la gestión de recursos humanos desarrollada c
 - Registro de sanciones (amonestación, descuento, suspensión)
 - Monto configurable
 - Descripción y motivos
+- **Integración automática con descuentos en liquidación** ✅
 
-### 6. **Liquidación de Salarios (Nómina)**
+### 6. **Liquidación de Salarios (Nómina)** 💰
 - Generación automática de liquidaciones mensuales
 - Cálculo de:
-  - Salario base
-  - Ingresos extras
-  - Descuentos
+  - Salario base proporcional a días trabajados
+  - Ingresos extras (bonos + horas extra)
+  - **Anticipos con descuento automático** 🆕
+  - Bonificación familiar (5% × hijos)
+  - Descuentos manuales y sanciones
   - Aporte IPS (9.625%)
   - Salario neto
+- **Validación de días hábiles vs días presentes** 🆕
+- **Logging detallado de cada componente** 🆕
+- **Marcado automático de anticipos como aplicados** 🆕
 - Generación de recibos en PDF
 - Planilla consolidada mensual
+- **API de pre-visualización de liquidación** 🆕
 
-### 7. **Gestión de Vacaciones**
+### 7. **Gestión de Anticipos** 🆕
+- Solicitud de anticipos con archivo PDF adjunto
+- Aprobación/rechazo de solicitudes
+- Validación: máximo 40% del salario base
+- **Descuento automático en liquidación del mes** ✅
+- Marcado como "aplicado" tras liquidar
+- **API de anticipos pendientes** 🆕
+- **Auditoría de anticipos no descontados** 🆕
+
+### 8. **Gestión de Vacaciones**
 - Solicitud de vacaciones
 - Seguimiento de días disponibles, tomados y pendientes
 - Aprobación de solicitudes
 
-### 8. **Contratos**
+### 9. **Bonificación Familiar** 👨‍👩‍👧
+- Registro de hijos/dependientes
+- Cálculo automático del 5% por hijo
+- Integración en liquidación mensual
+- Historial de bonificaciones
+
+### 10. **Despidos y Finiquitos**
+- Registro de despidos con causa
+- Cálculo de indemnización según legislación
+- Gestión de finiquitos
+- Estados: Procesando/Pagado/Impugnado
+
+### 11. **Contratos**
 - Generación de contratos en PDF con ReportLab
 - Información del empleado y condiciones
+- Renovación automática de contratos temporales
 
-### 9. **Reportes PDF**
+### 12. **Reportes y PDFs**
 - Recibo individual de salario
 - Planilla de liquidación mensual
 - Contrato de trabajo
+- **Auditoría de anticipos (SQL + Python)** 🆕
 
-### 10. **Bitácora de Auditoría**
+### 13. **Bitácora de Auditoría**
 - Registro de todas las acciones CRUD
 - Información del usuario, fecha, hora y detalles
 - Filtrado por usuario y módulo
 - Trazabilidad completa del sistema
 
-### 11. **Autenticación y Autorización**
+### 14. **Autenticación y Autorización**
 - Sistema de login seguro
 - Dos roles: RRHH y Asistente RRHH
 - Control de acceso por roles
 - Cambio de contraseña
 
-### 12. **Interfaz Moderna**
+### 15. **Interfaz Moderna**
 - Bootstrap 5 responsivo
 - DataTables para tablas interactivas
 - SweetAlert2 para confirmaciones
 - Alertas flash para retroalimentación
 - Navbar con menús dinámicos
+- **Perfil de empleado con tabs y estadísticas** 🆕
+
+### 16. **APIs REST** 🆕
+- `/rrhh/liquidaciones/preview/<periodo>` - Pre-visualización de liquidación
+- `/rrhh/anticipos/pendientes` - Anticipos sin aplicar
+- `/rrhh/metricas/asistencias` - Estadísticas de asistencias
+- `/rrhh/api/empleados/<id>/justificaciones` - Historial de justificaciones
 
 ## 📁 Estructura del Proyecto
 
@@ -117,11 +158,12 @@ RRHH2/
 ## 🛠️ Tecnologías Utilizadas
 
 - **Backend**: Flask 2.3.3
-- **Base de Datos**: PostgreSQL
-- **ORM**: SQLAlchemy
-- **Autenticación**: Flask-Login
-- **Reportes**: ReportLab
-- **Frontend**: Bootstrap 5, DataTables, SweetAlert2
+- **Base de Datos**: PostgreSQL 14+
+- **ORM**: SQLAlchemy 3.0.5
+- **Autenticación**: Flask-Login 0.6.2
+- **Reportes**: ReportLab 4.0.7
+- **Scheduler**: Flask-APScheduler 1.13.1 (cierre automático de asistencias)
+- **Frontend**: Bootstrap 5, DataTables, SweetAlert2, Chart.js
 - **Python**: 3.8+
 
 ## 📦 Dependencias
@@ -131,9 +173,15 @@ Flask==2.3.3
 Flask-SQLAlchemy==3.0.5
 Flask-Login==0.6.2
 Flask-WTF==1.1.1
+Flask-APScheduler==1.13.1
+Werkzeug==2.3.7
 psycopg2-binary==2.9.7
 reportlab==4.0.7
 python-dotenv==1.0.0
+WTForms==3.0.1
+email-validator==2.0.0
+Jinja2==3.1.2
+openpyxl==3.1.2
 ```
 
 ## ⚙️ Instalación
@@ -219,12 +267,18 @@ python-dotenv==1.0.0
 - **usuarios**: Credenciales y roles
 - **empleados**: Información del empleado
 - **cargos**: Cargos disponibles
-- **asistencias**: Registro de asistencia
+- **asistencias**: Registro de asistencia con justificaciones 🆕
 - **permisos**: Solicitudes de permisos
-- **sanciones**: Disciplina
-- **liquidaciones**: Nómina
+- **sanciones**: Disciplina (auto-genera descuentos)
+- **descuentos**: Descuentos manuales y automáticos
+- **anticipos**: Solicitudes de anticipos con aprobación 🆕
+- **ingresos_extra**: Bonos adicionales
+- **horas_extra**: Horas extra trabajadas
+- **bonificacion_familiar**: Hijos/dependientes para bonificación 🆕
+- **liquidaciones**: Nómina mensual (incluye anticipos) 🆕
 - **vacaciones**: Gestión de vacaciones
 - **contratos**: Contratos de trabajo
+- **despidos**: Registro de despidos y finiquitos 🆕
 - **bitacora**: Auditoría de acciones
 
 ## 📈 Reportes Disponibles
@@ -286,6 +340,24 @@ Solución: Cambiar puerto en run.py o parar proceso
 - La bitácora registra IP y User Agent
 - Los PDFs se generan bajo demanda
 
+## 🔧 Scripts de Mantenimiento
+
+### Auditoría y Verificación
+- `scripts/auditoria_anticipos.py` - Audita anticipos no descontados en liquidaciones
+- `scripts/verificar_anticipo.py` - Verifica estado de un anticipo específico
+- `sql/auditoria_anticipos.sql` - Queries SQL para auditoría manual
+
+### Utilidades
+- `scripts/generar_datos_prueba.py` - Genera datos de prueba
+- `scripts/test_liquidaciones.py` - Prueba generación de liquidaciones
+- `scripts/auto_renew_contracts.py` - Renueva contratos automáticamente
+
+### Migraciones (Ya Aplicadas)
+- `migrations/add_anticipos.py` - Agrega tabla de anticipos
+- `migrations/add_bonificacion_familiar.py` - Bonificación familiar
+- `migrations/add_justificacion_asistencia.py` - Justificaciones
+- `migrations/add_despido_table.py` - Tabla de despidos
+
 ## 🚀 Deployment
 
 Para producción:
@@ -293,7 +365,18 @@ Para producción:
 2. Usar un servidor WSGI (Gunicorn, uWSGI)
 3. Configurar reverse proxy (Nginx, Apache)
 4. Usar certificado SSL/TLS
-5. Aumentar timeouts y límites
+5. Configurar backup automático de PostgreSQL
+6. Aumentar timeouts y límites
+7. Habilitar logs de producción
+
+## 📖 Documentación Adicional
+
+- `docs/IMPLEMENTACION_COMPLETA.md` - Guía de implementación de anticipos
+- `docs/ANALISIS_LIQUIDACION_COMPLETO.md` - Análisis del sistema de liquidación
+- `docs/FIX_ANTICIPOS_LIQUIDACION.md` - Fix crítico de anticipos
+- `docs/RESUMEN_EJECUTIVO_AUDITORIA.md` - Resumen de auditoría
+- `SETUP_POSTGRESQL.md` - Configuración de PostgreSQL
+- `MIGRACION_GUIA.md` - Guía de migración
 
 ## 📞 Soporte
 
@@ -306,3 +389,4 @@ Este proyecto está bajo licencia MIT.
 ---
 
 **Desarrollado para la Cooperativa - 2025**
+**Última actualización: Noviembre 2025**
