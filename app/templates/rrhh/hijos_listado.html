@@ -1,0 +1,227 @@
+{% extends 'base.html' %}
+
+{% block title %}Hijos - {{ empleado.nombre_completo }} - Sistema RRHH{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row mb-4">
+        <div class="col-md-8">
+            <h2><i class="bi bi-people-fill"></i> Hijos de {{ empleado.nombre_completo }}</h2>
+            <p class="text-muted">Gestión de bonificación familiar (5% salario mínimo por hijo)</p>
+        </div>
+        <div class="col-md-4 text-end">
+            <a href="{{ url_for('rrhh.perfil_empleado', empleado_id=empleado.id) }}" class="btn btn-secondary">
+                <i class="bi bi-arrow-left"></i> Volver al Perfil
+            </a>
+            <a href="{{ url_for('rrhh.agregar_hijo', empleado_id=empleado.id) }}" class="btn btn-primary">
+                <i class="bi bi-plus-circle"></i> Agregar Hijo
+            </a>
+        </div>
+    </div>
+
+    <!-- Resumen de Bonificación -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card text-center bg-light">
+                <div class="card-body">
+                    <h6 class="text-muted">Hijos Activos</h6>
+                    <h2 class="text-primary">{{ hijos_activos }}</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center bg-light">
+                <div class="card-body">
+                    <h6 class="text-muted">Salario Mínimo</h6>
+                    <h4>{{ "%.0f"|format(salario_minimo) }} Gs</h4>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center bg-light">
+                <div class="card-body">
+                    <h6 class="text-muted">Por Hijo (5%)</h6>
+                    <h4>{{ "%.0f"|format(salario_minimo|float * 0.05) }} Gs</h4>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center bg-success text-white">
+                <div class="card-body">
+                    <h6>Bonificación Total</h6>
+                    <h3>{{ "%.0f"|format(bonificacion_actual) }} Gs</h3>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tabla de Hijos -->
+    <div class="card">
+        <div class="card-body">
+            <table class="table table-hover">
+                <thead class="table-dark">
+                    <tr>
+                        <th>Nombre Completo</th>
+                        <th>CI</th>
+                        <th>F. Nacimiento</th>
+                        <th>Edad</th>
+                        <th>Tipo</th>
+                        <th>Estado</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for hijo in hijos %}
+                    <tr class="{% if not hijo.activo %}table-secondary{% endif %}">
+                        <td>
+                            <strong>{{ hijo.hijo_nombre_completo }}</strong>
+                            {% if hijo.sexo == 'M' %}
+                                <i class="bi bi-gender-male text-primary"></i>
+                            {% elif hijo.sexo == 'F' %}
+                                <i class="bi bi-gender-female text-danger"></i>
+                            {% endif %}
+                        </td>
+                        <td>{{ hijo.hijo_ci or '-' }}</td>
+                        <td>{{ hijo.hijo_fecha_nacimiento.strftime('%d/%m/%Y') }}</td>
+                        <td>{{ hijo.edad_actual }} años</td>
+                        <td>
+                            <span class="badge bg-info">{{ hijo.tipo.value }}</span>
+                        </td>
+                        <td>
+                            {% if hijo.activo %}
+                                <span class="badge bg-success">Activo</span>
+                            {% else %}
+                                <span class="badge bg-secondary">Inactivo</span>
+                                <br><small class="text-muted">{{ hijo.motivo_baja }}</small>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <a href="{{ url_for('rrhh.editar_hijo', empleado_id=empleado.id, hijo_id=hijo.id) }}" 
+                               class="btn btn-sm btn-warning" title="Editar">
+                                <i class="bi bi-pencil"></i>
+                            </a>
+                            
+                            {% if hijo.activo %}
+                                <button type="button" class="btn btn-sm btn-danger" 
+                                        onclick="darBajaHijo({{ hijo.id }}, '{{ hijo.hijo_nombre_completo }}')" title="Dar de baja">
+                                    <i class="bi bi-x-circle"></i>
+                                </button>
+                            {% else %}
+                                <form method="POST" action="{{ url_for('rrhh.reactivar_hijo', empleado_id=empleado.id, hijo_id=hijo.id) }}" 
+                                      style="display:inline;">
+                                    <button type="submit" class="btn btn-sm btn-success" title="Reactivar">
+                                        <i class="bi bi-check-circle"></i>
+                                    </button>
+                                </form>
+                            {% endif %}
+                            
+                            <!-- Ver documentos -->
+                            <button type="button" class="btn btn-sm btn-info" 
+                                    data-bs-toggle="modal" data-bs-target="#modalDocs{{ hijo.id }}" title="Ver documentos">
+                                <i class="bi bi-file-earmark-text"></i>
+                            </button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    
+                    {% if not hijos %}
+                    <tr>
+                        <td colspan="7" class="text-center text-muted">
+                            No hay hijos registrados para este empleado
+                        </td>
+                    </tr>
+                    {% endif %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="alert alert-info mt-3">
+        <i class="bi bi-info-circle"></i>
+        <strong>Nota:</strong> La bonificación familiar se calcula automáticamente en las liquidaciones mensuales.
+        Fórmula: (Salario Mínimo × 5%) × Cantidad de hijos activos.
+    </div>
+</div>
+
+<!-- Modales de Documentos (fuera de la tabla) -->
+{% for hijo in hijos %}
+<div class="modal fade" id="modalDocs{{ hijo.id }}" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Documentos - {{ hijo.hijo_nombre_completo }}</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <ul class="list-group">
+                    {% if hijo.certificado_nacimiento %}
+                    <li class="list-group-item">
+                        <i class="bi bi-file-pdf text-danger"></i> Certificado de Nacimiento
+                        <a href="{{ url_for('static', filename=hijo.certificado_nacimiento) }}" 
+                           target="_blank" class="btn btn-sm btn-primary float-end">Ver</a>
+                    </li>
+                    {% endif %}
+                    {% if hijo.certificado_estudio %}
+                    <li class="list-group-item">
+                        <i class="bi bi-file-pdf text-danger"></i> Certificado de Estudio
+                        <a href="{{ url_for('static', filename=hijo.certificado_estudio) }}" 
+                           target="_blank" class="btn btn-sm btn-primary float-end">Ver</a>
+                    </li>
+                    {% endif %}
+                    {% if hijo.certificado_discapacidad %}
+                    <li class="list-group-item">
+                        <i class="bi bi-file-pdf text-danger"></i> Certificado de Discapacidad
+                        <a href="{{ url_for('static', filename=hijo.certificado_discapacidad) }}" 
+                           target="_blank" class="btn btn-sm btn-primary float-end">Ver</a>
+                    </li>
+                    {% endif %}
+                    {% if not hijo.certificado_nacimiento and not hijo.certificado_estudio and not hijo.certificado_discapacidad %}
+                    <li class="list-group-item text-muted">Sin documentos cargados</li>
+                    {% endif %}
+                </ul>
+                {% if hijo.observaciones %}
+                <hr>
+                <p><strong>Observaciones:</strong><br>{{ hijo.observaciones }}</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endfor %}
+
+<script>
+function darBajaHijo(hijoId, nombreHijo) {
+    Swal.fire({
+        title: '¿Dar de baja a ' + nombreHijo + '?',
+        input: 'text',
+        inputLabel: 'Motivo de la baja',
+        inputPlaceholder: 'Ej: Cumplió 18 años',
+        showCancelButton: true,
+        confirmButtonColor: '#d33',
+        cancelButtonColor: '#3085d6',
+        confirmButtonText: 'Dar de Baja',
+        cancelButtonText: 'Cancelar',
+        inputValidator: (value) => {
+            if (!value) {
+                return 'Debes especificar un motivo'
+            }
+        }
+    }).then((result) => {
+        if (result.isConfirmed) {
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.action = '{{ url_for("rrhh.dar_baja_hijo", empleado_id=empleado.id, hijo_id=0) }}'.replace('0', hijoId);
+            
+            const inputMotivo = document.createElement('input');
+            inputMotivo.type = 'hidden';
+            inputMotivo.name = 'motivo';
+            inputMotivo.value = result.value;
+            form.appendChild(inputMotivo);
+            
+            document.body.appendChild(form);
+            form.submit();
+        }
+    });
+}
+</script>
+{% endblock %}

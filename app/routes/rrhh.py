@@ -16,7 +16,8 @@ from ..models import (
     db, Empleado, Cargo, Asistencia, Permiso, Sancion,
     Contrato, Liquidacion, Vacacion, IngresoExtra, Descuento,
     Bitacora, EstadoEmpleadoEnum, EstadoVacacionEnum, EstadoPermisoEnum, RoleEnum, Despido,
-    Postulante, DocumentosCurriculum, AsistenciaEvento, Empresa, HorasExtra, Anticipo
+    Postulante, DocumentosCurriculum, AsistenciaEvento, Empresa, HorasExtra, Anticipo,
+    SalarioMinimo, BonificacionFamiliar, TipoHijoEnum
 )
 from ..bitacora import registrar_bitacora, registrar_operacion_crud
 from ..reports.report_utils import ReportUtils
@@ -907,6 +908,133 @@ def _resumir_dia_asistencias(empleado_id, dia_date):
     }
     return resumen
 
+
+def cerrar_asistencias_automatico(fecha_cierre=None):
+    """
+    Cierra automáticamente las asistencias del día especificado.
+    Genera registros para empleados sin marcación, distinguiendo:
+    - Vacaciones aprobadas
+    - Permisos aprobados
+    - Ausencias injustificadas
+    
+    Args:
+        fecha_cierre: Fecha a cerrar (date). Si None, usa fecha actual.
+    
+    Returns:
+        dict con estadísticas de procesamiento
+    """
+    from app.models import Empleado, EstadoEmpleadoEnum, Vacacion, EstadoVacacionEnum, Permiso, EstadoPermisoEnum
+    
+    if fecha_cierre is None:
+        fecha_cierre = date.today()
+    
+    # Solo procesar días laborales (lunes a sábado)
+    if fecha_cierre.weekday() == 6:  # Domingo = 6
+        return {
+            'procesados': 0,
+            'mensaje': f'Domingo {fecha_cierre} no es día laboral (omitido)',
+            'vacaciones': 0,
+            'permisos': 0,
+            'ausencias': 0
+        }
+    
+    # Obtener empleados activos
+    empleados_activos = Empleado.query.filter_by(
+        estado=EstadoEmpleadoEnum.ACTIVO
+    ).all()
+    
+    stats = {
+        'procesados': 0,
+        'vacaciones': 0,
+        'permisos': 0,
+        'ausencias': 0,
+        'ya_registrados': 0
+    }
+    
+    for empleado in empleados_activos:
+        # Saltar si ingresó después de la fecha de cierre
+        if empleado.fecha_ingreso and empleado.fecha_ingreso > fecha_cierre:
+            continue
+        
+        # Saltar si salió antes de la fecha de cierre
+        if empleado.fecha_salida and empleado.fecha_salida < fecha_cierre:
+            continue
+        
+        # Verificar si ya tiene asistencia registrada
+        asistencia_existe = Asistencia.query.filter_by(
+            empleado_id=empleado.id,
+            fecha=fecha_cierre
+        ).first()
+        
+        if asistencia_existe:
+            stats['ya_registrados'] += 1
+            continue
+        
+        # 1. Verificar vacaciones aprobadas
+        vacacion = Vacacion.query.filter(
+            Vacacion.empleado_id == empleado.id,
+            Vacacion.estado == EstadoVacacionEnum.APROBADA,
+            Vacacion.fecha_inicio_solicitud <= fecha_cierre,
+            Vacacion.fecha_fin_solicitud >= fecha_cierre
+        ).first()
+        
+        if vacacion:
+            asistencia = Asistencia(
+                empleado_id=empleado.id,
+                fecha=fecha_cierre,
+                presente=True,  # Vacaciones cuentan como día trabajado
+                observaciones='Vacaciones (auto-generado)',
+                justificacion_estado=None  # No requiere justificación
+            )
+            db.session.add(asistencia)
+            stats['vacaciones'] += 1
+            stats['procesados'] += 1
+            continue
+        
+        # 2. Verificar permisos aprobados
+        permiso = Permiso.query.filter(
+            Permiso.empleado_id == empleado.id,
+            Permiso.estado.in_([EstadoPermisoEnum.APROBADO, EstadoPermisoEnum.COMPLETADO]),
+            Permiso.fecha_inicio <= fecha_cierre,
+            Permiso.fecha_fin >= fecha_cierre
+        ).first()
+        
+        if permiso:
+            asistencia = Asistencia(
+                empleado_id=empleado.id,
+                fecha=fecha_cierre,
+                presente=True,  # Permiso cuenta como presente (si es remunerado)
+                observaciones=f'Permiso: {permiso.motivo} (auto-generado)',
+                justificacion_estado=None  # No requiere justificación
+            )
+            db.session.add(asistencia)
+            stats['permisos'] += 1
+            stats['procesados'] += 1
+            continue
+        
+        # 3. Sin marcación ni justificación = Ausencia pendiente de justificar
+        asistencia = Asistencia(
+            empleado_id=empleado.id,
+            fecha=fecha_cierre,
+            presente=False,
+            observaciones='Ausencia sin marcación (auto-generado)',
+            justificacion_estado='PENDIENTE'  # Requiere decisión de RRHH
+        )
+        db.session.add(asistencia)
+        stats['ausencias'] += 1
+        stats['procesados'] += 1
+    
+    try:
+        db.session.commit()
+        stats['mensaje'] = f'Asistencias del {fecha_cierre} cerradas exitosamente'
+    except Exception as e:
+        db.session.rollback()
+        stats['mensaje'] = f'Error al cerrar asistencias: {str(e)}'
+        stats['error'] = True
+    
+    return stats
+
+
 @rrhh_bp.route('/asistencia/registrar', methods=['POST'])
 @login_required
 def registrar_asistencia():
@@ -925,6 +1053,10 @@ def registrar_asistencia():
 
         ahora = datetime.now()
         hoy = date.today()
+        hora_actual = ahora.time()
+        
+        # Hora límite de cierre (17:30)
+        hora_cierre = datetime.strptime('17:30', '%H:%M').time()
 
         # Inferir tipo si no se pasa explícitamente
         tipo = request.json.get('tipo')
@@ -934,6 +1066,13 @@ def registrar_asistencia():
         ).count()
         if tipo not in ('in', 'out'):
             tipo = 'in' if eventos_count % 2 == 0 else 'out'
+        
+        # Validar: después de 17:30 solo se permite salida, NO entrada
+        if hora_actual > hora_cierre and tipo == 'in':
+            return jsonify({
+                'success': False, 
+                'message': f'No se permite marcar entrada después de las 17:30. Hora actual: {hora_actual.strftime("%H:%M")}'
+            }), 403
 
         evento = AsistenciaEvento(
             empleado_id=empleado.id,
@@ -1001,6 +1140,103 @@ def editar_asistencia(asistencia_id):
     
     fecha = asistencia.fecha.strftime('%Y-%m-%d')
     return redirect(url_for('rrhh.ver_asistencia', fecha=fecha))
+
+
+@rrhh_bp.route('/asistencia/cerrar_dia', methods=['POST'])
+@login_required
+@role_required(RoleEnum.RRHH)
+def cerrar_dia_asistencias():
+    """Cierra manualmente las asistencias de un día específico"""
+    try:
+        fecha_str = request.form.get('fecha', str(date.today()))
+        fecha_cierre = datetime.strptime(fecha_str, '%Y-%m-%d').date()
+        
+        stats = cerrar_asistencias_automatico(fecha_cierre)
+        
+        if stats.get('error'):
+            flash(stats['mensaje'], 'danger')
+        else:
+            flash(f"✅ {stats['mensaje']}: {stats['procesados']} registros generados "
+                  f"({stats['vacaciones']} vacaciones, {stats['permisos']} permisos, "
+                  f"{stats['ausencias']} ausencias pendientes)", 'success')
+        
+        registrar_bitacora(current_user, 'asistencia', 'CIERRE', 'asistencias', 
+                          {'fecha': fecha_str, 'stats': stats})
+        
+    except Exception as e:
+        flash(f'Error al cerrar asistencias: {str(e)}', 'danger')
+    
+    return redirect(url_for('rrhh.dashboard'))
+
+
+@rrhh_bp.route('/asistencia/<int:asistencia_id>/justificar', methods=['POST'])
+@login_required
+@role_required(RoleEnum.RRHH)
+def justificar_ausencia(asistencia_id):
+    """Marca una ausencia como justificada con nota de RRHH"""
+    asistencia = Asistencia.query.get_or_404(asistencia_id)
+    
+    try:
+        nota = request.form.get('justificacion_nota', '').strip()
+        
+        if not nota:
+            return jsonify({'success': False, 'message': 'Debe proporcionar un motivo'}), 400
+        
+        asistencia.justificacion_estado = 'JUSTIFICADO'
+        asistencia.justificacion_nota = nota
+        asistencia.justificacion_fecha = datetime.now()
+        asistencia.justificacion_por = current_user.id
+        asistencia.observaciones = f'Ausencia justificada: {nota}'
+        
+        db.session.commit()
+        
+        registrar_operacion_crud(
+            current_user, 'asistencia', 'UPDATE', 'asistencias',
+            asistencia_id, {'accion': 'justificar', 'nota': nota}
+        )
+        
+        return jsonify({
+            'success': True, 
+            'message': f'Ausencia de {asistencia.empleado.nombre_completo} justificada. Se descontará 1 día del salario.'
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': f'Error: {str(e)}'}), 500
+
+
+@rrhh_bp.route('/asistencia/<int:asistencia_id>/no_justificar', methods=['POST'])
+@login_required
+@role_required(RoleEnum.RRHH)
+def no_justificar_ausencia(asistencia_id):
+    """Marca una ausencia como NO justificada (injustificada)"""
+    asistencia = Asistencia.query.get_or_404(asistencia_id)
+    
+    try:
+        nota = request.form.get('justificacion_nota', 'Sin motivo válido').strip()
+        
+        asistencia.justificacion_estado = 'INJUSTIFICADO'
+        asistencia.justificacion_nota = nota
+        asistencia.justificacion_fecha = datetime.now()
+        asistencia.justificacion_por = current_user.id
+        asistencia.observaciones = 'Ausencia injustificada'
+        
+        db.session.commit()
+        
+        registrar_operacion_crud(
+            current_user, 'asistencia', 'UPDATE', 'asistencias',
+            asistencia_id, {'accion': 'no_justificar', 'nota': nota}
+        )
+        
+        return jsonify({
+            'success': True, 
+            'message': f'Ausencia de {asistencia.empleado.nombre_completo} marcada como injustificada. Se descontará 1 día del salario.'
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'success': False, 'message': f'Error: {str(e)}'}), 500
+
 
 @rrhh_bp.route('/permisos/empleado/<int:empleado_id>', methods=['GET'])
 @login_required
@@ -1722,11 +1958,15 @@ def generar_liquidacion():
                     Descuento.año == año
                 ).scalar() or Decimal('0')
                 
-                # Calcular aporte IPS (9.625% sobre salario ajustado)
-                aporte_ips = (salario_base_ajustado + ingresos_extras) * Decimal('0.09625')
+                # Calcular bonificación familiar
+                fecha_liquidacion = date(año, mes, 1)
+                bonificacion_familiar = calcular_bonificacion_familiar(empleado.id, fecha_liquidacion)
+                
+                # Calcular aporte IPS (9.625% sobre salario ajustado + ingresos extras + bonificación)
+                aporte_ips = (salario_base_ajustado + ingresos_extras + bonificacion_familiar) * Decimal('0.09625')
                 
                 # Calcular salario neto
-                salario_neto = salario_base_ajustado + ingresos_extras - descuentos - aporte_ips
+                salario_neto = salario_base_ajustado + ingresos_extras + bonificacion_familiar - descuentos - aporte_ips
                 
                 # Crear liquidación
                 liquidacion = Liquidacion(
@@ -1734,6 +1974,7 @@ def generar_liquidacion():
                     periodo=periodo,
                     salario_base=salario_base_ajustado,  # Salario ajustado a días trabajados
                     ingresos_extras=ingresos_extras,
+                    bonificacion_familiar=bonificacion_familiar,
                     descuentos=descuentos,
                     aporte_ips=aporte_ips,
                     salario_neto=salario_neto,
@@ -1833,6 +2074,228 @@ def descargar_planilla_mensual(periodo):
     )
 
 # ==================== VACACIONES ====================
+
+def calcular_dias_vacaciones_por_antiguedad(empleado, año=None):
+    """
+    Calcula días de vacaciones según antigüedad del empleado.
+    Código Laboral Paraguayo:
+    - 1-5 años: 12 días
+    - 5-10 años: 18 días
+    - 10+ años: 30 días
+    
+    Args:
+        empleado: Objeto Empleado
+        año: Año para el cual calcular (por defecto año actual)
+    
+    Returns:
+        int: Días de vacaciones correspondientes
+    """
+    if not año:
+        año = date.today().year
+    
+    if not empleado.fecha_ingreso:
+        return 12  # Default mínimo
+    
+    # Calcular antigüedad al 31 de diciembre del año solicitado
+    fecha_calculo = date(año, 12, 31)
+    if fecha_calculo > date.today():
+        fecha_calculo = date.today()
+    
+    años_servicio = (fecha_calculo - empleado.fecha_ingreso).days / 365.25
+    
+    if años_servicio < 5:
+        return 12
+    elif años_servicio < 10:
+        return 18
+    else:
+        return 30
+
+
+def calcular_saldo_vacaciones_actual(empleado):
+    """
+    Calcula el saldo actual de vacaciones del empleado dinámicamente.
+    
+    - Calcula días ganados por antigüedad cada año
+    - Resta días tomados (aprobados)
+    - Acumula hasta 2 años atrás
+    - Identifica días por vencer
+    
+    Args:
+        empleado: Objeto Empleado
+    
+    Returns:
+        dict: {
+            'disponibles_total': int,
+            'tomados_total': int,
+            'pendientes': int,
+            'por_vencer': int,
+            'fecha_vencimiento': date,
+            'alerta': bool,
+            'desglose_años': list
+        }
+    """
+    if not empleado.fecha_ingreso:
+        return {
+            'disponibles_total': 0,
+            'tomados_total': 0,
+            'pendientes': 0,
+            'por_vencer': 0,
+            'fecha_vencimiento': None,
+            'alerta': False,
+            'desglose_años': []
+        }
+    
+    año_actual = date.today().year
+    años_a_considerar = [año_actual - 2, año_actual - 1, año_actual]  # 3 años (incluye el que vence)
+    
+    disponibles_total = 0
+    tomados_total = 0
+    desglose_años = []
+    por_vencer = 0
+    fecha_vencimiento = None
+    
+    for año in años_a_considerar:
+        # Solo considerar años después del ingreso
+        if año < empleado.fecha_ingreso.year:
+            continue
+        
+        # Días ganados ese año según antigüedad
+        dias_ganados = calcular_dias_vacaciones_por_antiguedad(empleado, año)
+        
+        # Días tomados ese año (vacaciones aprobadas)
+        vacaciones_año = Vacacion.query.filter_by(
+            empleado_id=empleado.id,
+            año=año,
+            estado=EstadoVacacionEnum.APROBADA
+        ).all()
+        
+        dias_tomados_año = sum([
+            (v.fecha_fin_solicitud - v.fecha_inicio_solicitud).days + 1
+            for v in vacaciones_año
+            if v.fecha_inicio_solicitud and v.fecha_fin_solicitud
+        ])
+        
+        saldo_año = dias_ganados - dias_tomados_año
+        
+        # Identificar días por vencer (más de 2 años)
+        if año == año_actual - 2 and saldo_año > 0:
+            por_vencer = saldo_año
+            fecha_vencimiento = date(año_actual, 12, 31)
+        
+        desglose_años.append({
+            'año': año,
+            'ganados': dias_ganados,
+            'tomados': dias_tomados_año,
+            'saldo': saldo_año,
+            'vence': año == año_actual - 2
+        })
+        
+        disponibles_total += dias_ganados
+        tomados_total += dias_tomados_año
+    
+    pendientes = disponibles_total - tomados_total
+    alerta = por_vencer > 0
+    
+    return {
+        'disponibles_total': disponibles_total,
+        'tomados_total': tomados_total,
+        'pendientes': max(0, pendientes),
+        'por_vencer': por_vencer,
+        'fecha_vencimiento': fecha_vencimiento,
+        'alerta': alerta,
+        'desglose_años': desglose_años
+    }
+
+
+def generar_vacaciones_anuales(año=None, empleado_id=None):
+    """
+    Genera registros de vacaciones para un año específico.
+    - Calcula días según antigüedad de cada empleado
+    - Acumula saldos pendientes del año anterior
+    - Crea registro solo si no existe
+    
+    Args:
+        año: Año para generar (por defecto año actual)
+        empleado_id: ID específico o None para todos los activos
+    
+    Returns:
+        dict: Resumen de generación (creados, actualizados, errores)
+    """
+    if not año:
+        año = date.today().year
+    
+    # Obtener empleados
+    if empleado_id:
+        empleados = [Empleado.query.get(empleado_id)]
+    else:
+        empleados = Empleado.query.filter_by(estado=EstadoEmpleadoEnum.ACTIVO).all()
+    
+    resultado = {
+        'creados': 0,
+        'actualizados': 0,
+        'ya_existentes': 0,
+        'errores': []
+    }
+    
+    for empleado in empleados:
+        try:
+            # Verificar si ya existe registro para ese año
+            vacacion_existente = Vacacion.query.filter_by(
+                empleado_id=empleado.id,
+                año=año
+            ).first()
+            
+            if vacacion_existente:
+                # Actualizar días disponibles según antigüedad actual
+                dias_por_antiguedad = calcular_dias_vacaciones_por_antiguedad(empleado, año)
+                
+                # Solo actualizar si cambió la antigüedad
+                if vacacion_existente.dias_disponibles != dias_por_antiguedad:
+                    diferencia = dias_por_antiguedad - (vacacion_existente.dias_disponibles - vacacion_existente.dias_tomados)
+                    vacacion_existente.dias_disponibles = dias_por_antiguedad
+                    vacacion_existente.dias_pendientes = max(0, dias_por_antiguedad - vacacion_existente.dias_tomados)
+                    db.session.commit()
+                    resultado['actualizados'] += 1
+                else:
+                    resultado['ya_existentes'] += 1
+                continue
+            
+            # Calcular días según antigüedad
+            dias_disponibles = calcular_dias_vacaciones_por_antiguedad(empleado, año)
+            
+            # Buscar saldo pendiente del año anterior
+            año_anterior = año - 1
+            vacacion_anterior = Vacacion.query.filter_by(
+                empleado_id=empleado.id,
+                año=año_anterior
+            ).first()
+            
+            saldo_anterior = 0
+            if vacacion_anterior and vacacion_anterior.dias_pendientes > 0:
+                # Acumular hasta 2 años de vacaciones no gozadas (Paraguay permite acumulación)
+                saldo_anterior = min(vacacion_anterior.dias_pendientes, dias_disponibles * 2)
+            
+            # Crear nuevo registro
+            nueva_vacacion = Vacacion(
+                empleado_id=empleado.id,
+                año=año,
+                dias_disponibles=dias_disponibles + saldo_anterior,
+                dias_tomados=0,
+                dias_pendientes=dias_disponibles + saldo_anterior,
+                estado=EstadoVacacionEnum.PENDIENTE
+            )
+            
+            db.session.add(nueva_vacacion)
+            db.session.commit()
+            resultado['creados'] += 1
+            
+        except Exception as e:
+            resultado['errores'].append(f"Empleado {empleado.codigo}: {str(e)}")
+            db.session.rollback()
+    
+    return resultado
+
+
 @rrhh_bp.route('/vacaciones', methods=['GET'])
 @login_required
 def listar_vacaciones():
@@ -1856,16 +2319,27 @@ def listar_vacaciones():
 @login_required
 @role_required(RoleEnum.RRHH)
 def ver_historial_vacaciones(empleado_id):
-    """Ver historial de vacaciones de un empleado y sus solicitudes pendientes"""
+    """Ver historial de vacaciones de un empleado con cálculo dinámico y alertas"""
     registrar_bitacora(current_user, 'vacaciones', 'VIEW', 'vacaciones')
 
     empleado = Empleado.query.get_or_404(empleado_id)
-    # Traer todas las vacaciones (historial) del empleado, ordenadas por año descendente
+    
+    # Calcular saldo actual dinámicamente
+    saldo = calcular_saldo_vacaciones_actual(empleado)
+    
+    # Traer todas las vacaciones (historial) del empleado
     vacaciones = Vacacion.query.filter_by(empleado_id=empleado_id).order_by(Vacacion.año.desc()).all()
-    # Traer solicitudes pendientes (si las hubiera)
+    # Traer solicitudes pendientes
     pendientes = Vacacion.query.filter_by(empleado_id=empleado_id, estado=EstadoVacacionEnum.PENDIENTE).all()
+    
+    # Calcular días por antigüedad para mostrar
+    empleado.dias_vacaciones_actuales = calcular_dias_vacaciones_por_antiguedad(empleado)
 
-    return render_template('rrhh/vacacion_detalle.html', empleado=empleado, vacaciones=vacaciones, pendientes=pendientes)
+    return render_template('rrhh/vacacion_detalle.html', 
+                         empleado=empleado, 
+                         vacaciones=vacaciones, 
+                         pendientes=pendientes,
+                         saldo=saldo)
 
 
 @rrhh_bp.route('/vacaciones/solicitud_imprimir', methods=['GET', 'POST'])
@@ -2071,7 +2545,7 @@ def imprimir_solicitud_vacacion_directa(empleado_id):
 @rrhh_bp.route('/vacaciones/solicitar', methods=['GET', 'POST'])
 @login_required
 def solicitar_vacaciones():
-    """Solicitar vacaciones"""
+    """Solicitar vacaciones con cálculo 100% automático y dinámico"""
     empleados = Empleado.query.filter_by(estado=EstadoEmpleadoEnum.ACTIVO).all()
     
     if request.method == 'POST':
@@ -2081,38 +2555,29 @@ def solicitar_vacaciones():
             fecha_fin = datetime.strptime(request.form.get('fecha_fin'), '%Y-%m-%d').date()
             dias_solicitados = (fecha_fin - fecha_inicio).days + 1
             
-            # Verificar días disponibles
-            vacacion = Vacacion.query.filter_by(
-                empleado_id=empleado_id,
-                año=fecha_inicio.year
-            ).first()
+            empleado = Empleado.query.get(empleado_id)
             
-            if not vacacion:
-                vacacion = Vacacion(
-                    empleado_id=empleado_id,
-                    año=fecha_inicio.year,
-                    dias_disponibles=15
-                )
-                db.session.add(vacacion)
-                db.session.flush()
-
-            # Asegurar que la solicitud quede en estado PENDIENTE y actualizar dias_pendientes
-            from ..models import EstadoVacacionEnum
-            vacacion.estado = EstadoVacacionEnum.PENDIENTE
-            # Mantener dias_pendientes coherentes (no restamos hasta la aprobación)
-            try:
-                vacacion.dias_pendientes = max((vacacion.dias_disponibles - (vacacion.dias_tomados or 0)), 0)
-            except Exception:
-                # Seguridad: si hay valores inesperados, dejar el valor por defecto
-                pass
+            # Calcular saldo actual dinámicamente
+            saldo = calcular_saldo_vacaciones_actual(empleado)
             
-            if vacacion.dias_disponibles < dias_solicitados:
-                flash(f'Solo dispone de {vacacion.dias_disponibles} días de vacaciones', 'danger')
+            # Verificar si tiene días suficientes
+            if saldo['pendientes'] < dias_solicitados:
+                flash(f'Solo dispone de {saldo["pendientes"]} días de vacaciones disponibles. Días solicitados: {dias_solicitados}', 'danger')
                 return redirect(url_for('rrhh.solicitar_vacaciones'))
             
-            vacacion.fecha_inicio_solicitud = fecha_inicio
-            vacacion.fecha_fin_solicitud = fecha_fin
+            # Crear registro de solicitud (solo guarda cuando se solicita)
+            vacacion = Vacacion(
+                empleado_id=empleado_id,
+                año=fecha_inicio.year,
+                dias_disponibles=calcular_dias_vacaciones_por_antiguedad(empleado, fecha_inicio.year),
+                dias_tomados=0,
+                dias_pendientes=saldo['pendientes'],
+                fecha_inicio_solicitud=fecha_inicio,
+                fecha_fin_solicitud=fecha_fin,
+                estado=EstadoVacacionEnum.PENDIENTE
+            )
             
+            db.session.add(vacacion)
             db.session.commit()
             
             registrar_operacion_crud(
@@ -2203,15 +2668,48 @@ def calcular_indemnizacion(salario_base, tipo_despido, antiguedad_años):
     meses = min(1 + antiguedad_años, 12)
     return (Decimal(meses) * Decimal(str(salario_base))).quantize(Decimal('0.01'))
 
-def calcular_aguinaldo_proporcional(salario_base, fecha_despido):
+def calcular_aguinaldo_proporcional(salario_base, fecha_despido, empleado_id=None):
     """
-    Calcula aguinaldo proporcional (13º sueldo).
-    Retorna proporción del año calendario trabajado.
+    Calcula aguinaldo proporcional (13º sueldo) según ley paraguaya.
+    
+    MÉTODO CORRECTO:
+    - Suma TODOS los ingresos devengados en el año (salarios + extras + comisiones + bonificaciones)
+    - Divide entre 12
+    
+    Si no hay liquidaciones registradas, usa el salario base proporcional como fallback.
     """
     año_despido = fecha_despido.year
     fecha_inicio_año = datetime(año_despido, 1, 1).date()
     
-    # Días trabajados desde inicio del año (inclusive)
+    # Si tenemos empleado_id, intentar calcular con ingresos reales
+    if empleado_id:
+        # Sumar todos los salarios base de las liquidaciones del año
+        total_salarios = db.session.query(
+            func.sum(Liquidacion.salario_base)
+        ).filter(
+            Liquidacion.empleado_id == empleado_id,
+            Liquidacion.periodo.like(f'{año_despido}%'),
+            Liquidacion.aguinaldo_monto == 0  # Excluir liquidaciones de aguinaldo
+        ).scalar() or Decimal('0')
+        
+        # Sumar ingresos extras del año (horas extras, comisiones, bonificaciones habituales)
+        total_extras = db.session.query(
+            func.sum(IngresoExtra.monto)
+        ).filter(
+            IngresoExtra.empleado_id == empleado_id,
+            IngresoExtra.año == año_despido,
+            IngresoExtra.tipo.in_(['Horas Extras', 'Comisión', 'Bonificación'])  # Excluir viáticos
+        ).scalar() or Decimal('0')
+        
+        # Total devengado = salarios + extras
+        total_devengado = total_salarios + total_extras
+        
+        # Si hay datos reales, usar el método correcto: Total / 12
+        if total_devengado > 0:
+            aguinaldo = (total_devengado / Decimal('12')).quantize(Decimal('0.01'))
+            return aguinaldo
+    
+    # FALLBACK: Si no hay liquidaciones, calcular proporcional por días trabajados
     días_trabajados = (fecha_despido - fecha_inicio_año).days + 1
     meses_trabajados = Decimal(str(días_trabajados)) / Decimal('30')
     
@@ -2273,8 +2771,8 @@ def generar_liquidacion_despido(empleado_id, tipo_despido, causal=None, descripc
     # 1. Indemnización
     indemnizacion = calcular_indemnizacion(empleado.salario_base, tipo_despido, antiguedad)
     
-    # 2. Aguinaldo proporcional
-    aguinaldo = calcular_aguinaldo_proporcional(empleado.salario_base, fecha_despido)
+    # 2. Aguinaldo proporcional (método legal: suma ingresos reales del año / 12)
+    aguinaldo = calcular_aguinaldo_proporcional(empleado.salario_base, fecha_despido, empleado_id=empleado.id)
     
     # 3. Vacaciones no gozadas
     vacaciones = calcular_vacaciones_no_gozadas(empleado, fecha_despido)
@@ -2585,10 +3083,35 @@ def generar_aguinaldos_anual(año, mes_corte=None, día_corte=None):
             if días_trabajados <= 0:
                 continue
             
-            meses_trabajados = Decimal(str(días_trabajados)) / Decimal('30')
+            # CÁLCULO SEGÚN LEY PARAGUAYA:
+            # Sumar todos los salarios base de liquidaciones del año
+            total_salarios = db.session.query(
+                func.sum(Liquidacion.salario_base)
+            ).filter(
+                Liquidacion.empleado_id == empleado.id,
+                Liquidacion.periodo.like(f'{año}%'),
+                Liquidacion.aguinaldo_monto == 0  # Excluir liquidaciones de aguinaldo previas
+            ).scalar() or Decimal('0')
             
-            # Aguinaldo bruto = (meses_trabajados / 12) × salario_base
-            aguinaldo_bruto = (Decimal(str(empleado.salario_base)) * meses_trabajados / Decimal('12')).quantize(Decimal('0.01'))
+            # Sumar ingresos extras del año (horas extras, comisiones, bonificaciones)
+            total_extras = db.session.query(
+                func.sum(IngresoExtra.monto)
+            ).filter(
+                IngresoExtra.empleado_id == empleado.id,
+                IngresoExtra.año == año,
+                IngresoExtra.tipo.in_(['Horas Extras', 'Comisión', 'Bonificación'])  # Excluir viáticos
+            ).scalar() or Decimal('0')
+            
+            # Total devengado en el año
+            total_devengado = total_salarios + total_extras
+            
+            # Si hay liquidaciones registradas, usar el método correcto: Total / 12
+            if total_devengado > 0:
+                aguinaldo_bruto = (total_devengado / Decimal('12')).quantize(Decimal('0.01'))
+            else:
+                # FALLBACK: Si no hay liquidaciones, calcular proporcional por meses trabajados
+                meses_trabajados = Decimal(str(días_trabajados)) / Decimal('30')
+                aguinaldo_bruto = (Decimal(str(empleado.salario_base)) * meses_trabajados / Decimal('12')).quantize(Decimal('0.01'))
             
             # Aportes IPS = 9% sobre aguinaldo
             aportes_ips = (aguinaldo_bruto * Decimal('0.09')).quantize(Decimal('0.01'))
@@ -2724,13 +3247,42 @@ def generar_aguinaldos():
                 días = (fecha_hasta - fecha_desde).days + 1
                 meses = Decimal(str(días)) / Decimal('30')
                 
-                aguinaldo = (Decimal(str(empleado.salario_base)) * meses / Decimal('12')).quantize(Decimal('0.01'))
+                # CÁLCULO SEGÚN LEY PARAGUAYA:
+                # Sumar todos los salarios base de liquidaciones del año
+                total_salarios = db.session.query(
+                    func.sum(Liquidacion.salario_base)
+                ).filter(
+                    Liquidacion.empleado_id == empleado.id,
+                    Liquidacion.periodo.like(f'{año}%'),
+                    Liquidacion.aguinaldo_monto == 0
+                ).scalar() or Decimal('0')
+                
+                # Sumar ingresos extras del año
+                total_extras = db.session.query(
+                    func.sum(IngresoExtra.monto)
+                ).filter(
+                    IngresoExtra.empleado_id == empleado.id,
+                    IngresoExtra.año == año,
+                    IngresoExtra.tipo.in_(['Horas Extras', 'Comisión', 'Bonificación'])
+                ).scalar() or Decimal('0')
+                
+                # Total devengado
+                total_devengado = total_salarios + total_extras
+                
+                # Si hay datos reales, usar método correcto: Total / 12
+                if total_devengado > 0:
+                    aguinaldo = (total_devengado / Decimal('12')).quantize(Decimal('0.01'))
+                else:
+                    # FALLBACK: usar proporcional por meses trabajados
+                    aguinaldo = (Decimal(str(empleado.salario_base)) * meses / Decimal('12')).quantize(Decimal('0.01'))
+                
                 ips = (aguinaldo * Decimal('0.09')).quantize(Decimal('0.01'))
                 neto = (aguinaldo - ips).quantize(Decimal('0.01'))
                 
                 preview_datos.append({
                     'empleado': empleado,
                     'meses': meses,
+                    'total_devengado': total_devengado,
                     'aguinaldo_bruto': aguinaldo,
                     'ips': ips,
                     'aguinaldo_neto': neto
@@ -3670,5 +4222,399 @@ def contrato_descargar(contrato_id):
     buf = BytesIO(contrato.contenido)
     filename = f"{contrato.numero_contrato}.pdf"
     return send_file(buf, as_attachment=True, download_name=filename, mimetype='application/pdf')
+
+
+# ==================== BONIFICACIÓN FAMILIAR ====================
+
+def obtener_salario_minimo_vigente(fecha=None):
+    """
+    Obtiene el salario mínimo vigente para una fecha específica.
+    Si no se proporciona fecha, usa la fecha actual.
+    """
+    if fecha is None:
+        fecha = date.today()
+    
+    salario = SalarioMinimo.query.filter(
+        SalarioMinimo.vigencia_desde <= fecha,
+        or_(SalarioMinimo.vigencia_hasta.is_(None), SalarioMinimo.vigencia_hasta >= fecha)
+    ).order_by(desc(SalarioMinimo.vigencia_desde)).first()
+    
+    if not salario:
+        # Si no hay salario mínimo registrado, retornar el último conocido
+        salario = SalarioMinimo.query.order_by(desc(SalarioMinimo.vigencia_desde)).first()
+    
+    return salario.monto if salario else Decimal('2798309')  # Fallback a salario mínimo 2025
+
+def contar_hijos_activos(empleado_id, fecha=None):
+    """
+    Cuenta la cantidad de hijos activos de un empleado para bonificación familiar.
+    """
+    if fecha is None:
+        fecha = date.today()
+    
+    return BonificacionFamiliar.query.filter(
+        BonificacionFamiliar.empleado_id == empleado_id,
+        BonificacionFamiliar.activo == True,
+        or_(
+            BonificacionFamiliar.fecha_baja.is_(None),
+            BonificacionFamiliar.fecha_baja >= fecha
+        )
+    ).count()
+
+def calcular_bonificacion_familiar(empleado_id, fecha=None):
+    """
+    Calcula bonificación familiar según ley paraguaya.
+    Fórmula: (Salario Mínimo × 5%) × Cantidad de hijos activos
+    """
+    if fecha is None:
+        fecha = date.today()
+    
+    # Obtener salario mínimo vigente
+    salario_minimo = obtener_salario_minimo_vigente(fecha)
+    
+    # Contar hijos activos
+    hijos_activos = contar_hijos_activos(empleado_id, fecha)
+    
+    if hijos_activos == 0:
+        return Decimal('0')
+    
+    # Calcular bonificación
+    bonificacion_por_hijo = (salario_minimo * Decimal('0.05')).quantize(Decimal('0.01'))
+    bonificacion_total = (bonificacion_por_hijo * hijos_activos).quantize(Decimal('0.01'))
+    
+    return bonificacion_total
+
+# ==================== RUTAS: GESTIÓN DE SALARIOS MÍNIMOS ====================
+
+@rrhh_bp.route('/salarios_minimos', methods=['GET'])
+@login_required
+@role_required(RoleEnum.RRHH)
+def listar_salarios_minimos():
+    """Lista histórico de salarios mínimos"""
+    registrar_bitacora(current_user, 'salarios_minimos', 'VIEW', 'salarios_minimos')
+    
+    salarios = SalarioMinimo.query.order_by(desc(SalarioMinimo.vigencia_desde)).all()
+    salario_vigente = obtener_salario_minimo_vigente()
+    
+    return render_template('rrhh/salarios_minimos.html', 
+                          salarios=salarios,
+                          salario_vigente=salario_vigente)
+
+@rrhh_bp.route('/salarios_minimos/crear', methods=['GET', 'POST'])
+@login_required
+@role_required(RoleEnum.RRHH)
+def crear_salario_minimo():
+    """Crear nuevo salario mínimo"""
+    if request.method == 'POST':
+        try:
+            año = int(request.form.get('año'))
+            monto = Decimal(request.form.get('monto'))
+            vigencia_desde = datetime.strptime(request.form.get('vigencia_desde'), '%Y-%m-%d').date()
+            vigencia_hasta_str = request.form.get('vigencia_hasta')
+            vigencia_hasta = datetime.strptime(vigencia_hasta_str, '%Y-%m-%d').date() if vigencia_hasta_str else None
+            
+            # Cerrar salario mínimo anterior si existe
+            salario_anterior = SalarioMinimo.query.filter(
+                SalarioMinimo.vigencia_hasta.is_(None)
+            ).first()
+            
+            if salario_anterior and vigencia_desde > salario_anterior.vigencia_desde:
+                salario_anterior.vigencia_hasta = vigencia_desde - timedelta(days=1)
+            
+            salario = SalarioMinimo(
+                año=año,
+                monto=monto,
+                vigencia_desde=vigencia_desde,
+                vigencia_hasta=vigencia_hasta,
+                usuario_creador_id=current_user.id
+            )
+            
+            db.session.add(salario)
+            db.session.commit()
+            
+            registrar_operacion_crud(current_user, 'salarios_minimos', 'CREATE', 'salarios_minimos',
+                                    salario.id, {'año': año, 'monto': str(monto)})
+            
+            flash(f'Salario mínimo {año} registrado: {monto} Gs.', 'success')
+            return redirect(url_for('rrhh.listar_salarios_minimos'))
+            
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Error al crear salario mínimo: {str(e)}', 'danger')
+    
+    return render_template('rrhh/crear_salario_minimo.html')
+
+# ==================== RUTAS: GESTIÓN DE HIJOS (BONIFICACIÓN FAMILIAR) ====================
+
+@rrhh_bp.route('/empleado/<int:empleado_id>/hijos', methods=['GET'])
+@login_required
+@role_required(RoleEnum.RRHH)
+def listar_hijos(empleado_id):
+    """Lista hijos de un empleado para bonificación familiar"""
+    empleado = Empleado.query.get_or_404(empleado_id)
+    registrar_bitacora(current_user, 'bonificacion_familiar', 'VIEW', 'bonificaciones_familiares')
+    
+    hijos = BonificacionFamiliar.query.filter_by(empleado_id=empleado_id).order_by(
+        desc(BonificacionFamiliar.activo),
+        BonificacionFamiliar.hijo_fecha_nacimiento
+    ).all()
+    
+    # Calcular bonificación actual
+    bonificacion_actual = calcular_bonificacion_familiar(empleado_id)
+    salario_minimo = obtener_salario_minimo_vigente()
+    hijos_activos_count = contar_hijos_activos(empleado_id)
+    
+    return render_template('rrhh/hijos_listado.html',
+                          empleado=empleado,
+                          hijos=hijos,
+                          bonificacion_actual=bonificacion_actual,
+                          salario_minimo=salario_minimo,
+                          hijos_activos=hijos_activos_count)
+
+@rrhh_bp.route('/empleado/<int:empleado_id>/hijos/agregar', methods=['GET', 'POST'])
+@login_required
+@role_required(RoleEnum.RRHH)
+def agregar_hijo(empleado_id):
+    """Agregar hijo para bonificación familiar"""
+    empleado = Empleado.query.get_or_404(empleado_id)
+    
+    if request.method == 'POST':
+        try:
+            hijo_nombre = request.form.get('hijo_nombre')
+            hijo_apellido = request.form.get('hijo_apellido')
+            hijo_ci = request.form.get('hijo_ci')
+            hijo_fecha_nacimiento = datetime.strptime(request.form.get('hijo_fecha_nacimiento'), '%Y-%m-%d').date()
+            sexo = request.form.get('sexo')
+            tipo_str = request.form.get('tipo')
+            observaciones = request.form.get('observaciones')
+            
+            # Convertir tipo string a enum
+            tipo = TipoHijoEnum[tipo_str.replace(' ', '_').replace('-', '_').upper()]
+            
+            # Manejar archivos subidos
+            certificado_nacimiento = None
+            certificado_estudio = None
+            certificado_discapacidad = None
+            
+            upload_folder = os.path.join(current_app.static_folder, 'uploads', 'bonificaciones')
+            os.makedirs(upload_folder, exist_ok=True)
+            
+            if 'certificado_nacimiento' in request.files:
+                file = request.files['certificado_nacimiento']
+                if file and file.filename:
+                    filename = secure_filename(f"{empleado.codigo}_{hijo_nombre}_{hijo_apellido}_nacimiento_{file.filename}")
+                    filepath = os.path.join(upload_folder, filename)
+                    file.save(filepath)
+                    certificado_nacimiento = f'uploads/bonificaciones/{filename}'
+            
+            if 'certificado_estudio' in request.files:
+                file = request.files['certificado_estudio']
+                if file and file.filename:
+                    filename = secure_filename(f"{empleado.codigo}_{hijo_nombre}_{hijo_apellido}_estudio_{file.filename}")
+                    filepath = os.path.join(upload_folder, filename)
+                    file.save(filepath)
+                    certificado_estudio = f'uploads/bonificaciones/{filename}'
+            
+            if 'certificado_discapacidad' in request.files:
+                file = request.files['certificado_discapacidad']
+                if file and file.filename:
+                    filename = secure_filename(f"{empleado.codigo}_{hijo_nombre}_{hijo_apellido}_discapacidad_{file.filename}")
+                    filepath = os.path.join(upload_folder, filename)
+                    file.save(filepath)
+                    certificado_discapacidad = f'uploads/bonificaciones/{filename}'
+            
+            hijo = BonificacionFamiliar(
+                empleado_id=empleado_id,
+                hijo_nombre=hijo_nombre,
+                hijo_apellido=hijo_apellido,
+                hijo_ci=hijo_ci,
+                hijo_fecha_nacimiento=hijo_fecha_nacimiento,
+                sexo=sexo,
+                tipo=tipo,
+                certificado_nacimiento=certificado_nacimiento,
+                certificado_estudio=certificado_estudio,
+                certificado_discapacidad=certificado_discapacidad,
+                observaciones=observaciones
+            )
+            
+            db.session.add(hijo)
+            db.session.commit()
+            
+            registrar_operacion_crud(current_user, 'bonificacion_familiar', 'CREATE', 'bonificaciones_familiares',
+                                    hijo.id, {'empleado': empleado.nombre_completo, 'hijo': hijo.hijo_nombre_completo})
+            
+            flash(f'Hijo {hijo.hijo_nombre_completo} agregado correctamente', 'success')
+            return redirect(url_for('rrhh.listar_hijos', empleado_id=empleado_id))
+            
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Error al agregar hijo: {str(e)}', 'danger')
+    
+    return render_template('rrhh/agregar_hijo.html', empleado=empleado, tipos_hijo=TipoHijoEnum)
+
+@rrhh_bp.route('/empleado/<int:empleado_id>/hijos/<int:hijo_id>/editar', methods=['GET', 'POST'])
+@login_required
+@role_required(RoleEnum.RRHH)
+def editar_hijo(empleado_id, hijo_id):
+    """Editar información de hijo"""
+    empleado = Empleado.query.get_or_404(empleado_id)
+    hijo = BonificacionFamiliar.query.get_or_404(hijo_id)
+    
+    if hijo.empleado_id != empleado_id:
+        flash('El hijo no pertenece a este empleado', 'danger')
+        return redirect(url_for('rrhh.listar_hijos', empleado_id=empleado_id))
+    
+    if request.method == 'POST':
+        try:
+            hijo.hijo_nombre = request.form.get('hijo_nombre')
+            hijo.hijo_apellido = request.form.get('hijo_apellido')
+            hijo.hijo_ci = request.form.get('hijo_ci')
+            hijo.hijo_fecha_nacimiento = datetime.strptime(request.form.get('hijo_fecha_nacimiento'), '%Y-%m-%d').date()
+            hijo.sexo = request.form.get('sexo')
+            tipo_str = request.form.get('tipo')
+            hijo.tipo = TipoHijoEnum[tipo_str.replace(' ', '_').replace('-', '_').upper()]
+            hijo.observaciones = request.form.get('observaciones')
+            
+            # Actualizar archivos si se subieron nuevos
+            upload_folder = os.path.join(current_app.static_folder, 'uploads', 'bonificaciones')
+            os.makedirs(upload_folder, exist_ok=True)
+            
+            if 'certificado_nacimiento' in request.files:
+                file = request.files['certificado_nacimiento']
+                if file and file.filename:
+                    filename = secure_filename(f"{empleado.codigo}_{hijo.hijo_nombre}_{hijo.hijo_apellido}_nacimiento_{file.filename}")
+                    filepath = os.path.join(upload_folder, filename)
+                    file.save(filepath)
+                    hijo.certificado_nacimiento = f'uploads/bonificaciones/{filename}'
+            
+            if 'certificado_estudio' in request.files:
+                file = request.files['certificado_estudio']
+                if file and file.filename:
+                    filename = secure_filename(f"{empleado.codigo}_{hijo.hijo_nombre}_{hijo.hijo_apellido}_estudio_{file.filename}")
+                    filepath = os.path.join(upload_folder, filename)
+                    file.save(filepath)
+                    hijo.certificado_estudio = f'uploads/bonificaciones/{filename}'
+            
+            if 'certificado_discapacidad' in request.files:
+                file = request.files['certificado_discapacidad']
+                if file and file.filename:
+                    filename = secure_filename(f"{empleado.codigo}_{hijo.hijo_nombre}_{hijo_apellido}_discapacidad_{file.filename}")
+                    filepath = os.path.join(upload_folder, filename)
+                    file.save(filepath)
+                    hijo.certificado_discapacidad = f'uploads/bonificaciones/{filename}'
+            
+            db.session.commit()
+            
+            registrar_operacion_crud(current_user, 'bonificacion_familiar', 'UPDATE', 'bonificaciones_familiares',
+                                    hijo.id, {'hijo': hijo.hijo_nombre_completo})
+            
+            flash(f'Información de {hijo.hijo_nombre_completo} actualizada', 'success')
+            return redirect(url_for('rrhh.listar_hijos', empleado_id=empleado_id))
+            
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Error al editar hijo: {str(e)}', 'danger')
+    
+    return render_template('rrhh/editar_hijo.html', empleado=empleado, hijo=hijo, tipos_hijo=TipoHijoEnum)
+
+@rrhh_bp.route('/empleado/<int:empleado_id>/hijos/<int:hijo_id>/dar_baja', methods=['POST'])
+@login_required
+@role_required(RoleEnum.RRHH)
+def dar_baja_hijo(empleado_id, hijo_id):
+    """Dar de baja a un hijo (cumplió 18, terminó estudios, etc.)"""
+    hijo = BonificacionFamiliar.query.get_or_404(hijo_id)
+    
+    if hijo.empleado_id != empleado_id:
+        flash('El hijo no pertenece a este empleado', 'danger')
+        return redirect(url_for('rrhh.listar_hijos', empleado_id=empleado_id))
+    
+    try:
+        motivo = request.form.get('motivo', 'Baja manual')
+        hijo.activo = False
+        hijo.fecha_baja = date.today()
+        hijo.motivo_baja = motivo
+        
+        db.session.commit()
+        
+        registrar_operacion_crud(current_user, 'bonificacion_familiar', 'UPDATE', 'bonificaciones_familiares',
+                                hijo.id, {'accion': 'Dar de baja', 'motivo': motivo})
+        
+        flash(f'Hijo {hijo.hijo_nombre_completo} dado de baja', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Error al dar de baja: {str(e)}', 'danger')
+    
+    return redirect(url_for('rrhh.listar_hijos', empleado_id=empleado_id))
+
+@rrhh_bp.route('/empleado/<int:empleado_id>/hijos/<int:hijo_id>/reactivar', methods=['POST'])
+@login_required
+@role_required(RoleEnum.RRHH)
+def reactivar_hijo(empleado_id, hijo_id):
+    """Reactivar un hijo dado de baja"""
+    hijo = BonificacionFamiliar.query.get_or_404(hijo_id)
+    
+    if hijo.empleado_id != empleado_id:
+        flash('El hijo no pertenece a este empleado', 'danger')
+        return redirect(url_for('rrhh.listar_hijos', empleado_id=empleado_id))
+    
+    try:
+        hijo.activo = True
+        hijo.fecha_baja = None
+        hijo.motivo_baja = None
+        
+        db.session.commit()
+        
+        registrar_operacion_crud(current_user, 'bonificacion_familiar', 'UPDATE', 'bonificaciones_familiares',
+                                hijo.id, {'accion': 'Reactivar'})
+        
+        flash(f'Hijo {hijo.hijo_nombre_completo} reactivado', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Error al reactivar: {str(e)}', 'danger')
+    
+    return redirect(url_for('rrhh.listar_hijos', empleado_id=empleado_id))
+
+@rrhh_bp.route('/bonificaciones_familiares/reporte', methods=['GET'])
+@login_required
+@role_required(RoleEnum.RRHH)
+def reporte_bonificaciones():
+    """Reporte consolidado de bonificaciones familiares"""
+    registrar_bitacora(current_user, 'bonificacion_familiar', 'VIEW', 'bonificaciones_familiares')
+    
+    # Obtener todos los empleados activos con hijos
+    empleados_con_hijos = db.session.query(
+        Empleado,
+        func.count(BonificacionFamiliar.id).label('cantidad_hijos')
+    ).join(
+        BonificacionFamiliar, Empleado.id == BonificacionFamiliar.empleado_id
+    ).filter(
+        Empleado.estado == EstadoEmpleadoEnum.ACTIVO,
+        BonificacionFamiliar.activo == True
+    ).group_by(Empleado.id).all()
+    
+    # Calcular bonificaciones
+    reporte = []
+    total_bonificaciones = Decimal('0')
+    total_hijos = 0
+    
+    for empleado, cant_hijos in empleados_con_hijos:
+        bonificacion = calcular_bonificacion_familiar(empleado.id)
+        reporte.append({
+            'empleado': empleado,
+            'cantidad_hijos': cant_hijos,
+            'bonificacion': bonificacion
+        })
+        total_bonificaciones += bonificacion
+        total_hijos += cant_hijos
+    
+    salario_minimo = obtener_salario_minimo_vigente()
+    bonificacion_por_hijo = (salario_minimo * Decimal('0.05')).quantize(Decimal('0.01'))
+    
+    return render_template('rrhh/reporte_bonificaciones.html',
+                          reporte=reporte,
+                          total_bonificaciones=total_bonificaciones,
+                          total_hijos=total_hijos,
+                          salario_minimo=salario_minimo,
+                          bonificacion_por_hijo=bonificacion_por_hijo)
 
 

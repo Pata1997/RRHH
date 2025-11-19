@@ -65,6 +65,78 @@
         </div>
     </div>
 
+    <!-- 🚨 WIDGET DE AUSENCIAS PENDIENTES -->
+    {% if current_user.rol.name == 'RRHH' and ausencias_pendientes|length > 0 %}
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <div class="alert alert-warning shadow-sm">
+                <div class="d-flex align-items-center mb-3">
+                    <i class="bi bi-exclamation-triangle-fill fs-1 me-3"></i>
+                    <div>
+                        <h5 class="mb-1">🚨 Ausencias Pendientes de Justificación</h5>
+                        <p class="mb-0">
+                            <strong>{{ ausencias_pendientes|length }}</strong> empleado(s) tienen ausencias sin justificar
+                        </p>
+                    </div>
+                </div>
+                
+                <div class="card">
+                    <div class="card-header bg-danger text-white">
+                        <h6 class="mb-0">📋 Gestión de Ausencias</h6>
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="table-responsive">
+                            <table class="table table-hover mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Empleado</th>
+                                        <th>Fecha</th>
+                                        <th>Días Pendientes</th>
+                                        <th>Estado</th>
+                                        <th>Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for ausencia in ausencias_pendientes[:10] %}
+                                    <tr id="ausencia-row-{{ ausencia.id }}">
+                                        <td>
+                                            <strong>{{ ausencia.empleado.codigo }}</strong> - 
+                                            {{ ausencia.empleado.nombre_completo }}
+                                        </td>
+                                        <td>{{ ausencia.fecha.strftime('%d/%m/%Y') }}</td>
+                                        <td>
+                                            <span class="badge bg-secondary">1 día</span>
+                                        </td>
+                                        <td>
+                                            <span class="badge bg-warning text-dark">Pendiente</span>
+                                        </td>
+                                        <td>
+                                            <button class="btn btn-sm btn-success" 
+                                                    onclick="mostrarModalJustificar({{ ausencia.id }}, '{{ ausencia.empleado.nombre_completo }}', '{{ ausencia.fecha.strftime('%d/%m/%Y') }}')">
+                                                <i class="bi bi-check-circle"></i> Justificar
+                                            </button>
+                                            <button class="btn btn-sm btn-danger" 
+                                                    onclick="noJustificarAusencia({{ ausencia.id }}, '{{ ausencia.empleado.nombre_completo }}')">
+                                                <i class="bi bi-x-circle"></i> No Justificar
+                                            </button>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        {% if ausencias_pendientes|length > 10 %}
+                        <div class="card-footer text-muted text-center">
+                            Mostrando las primeras 10 ausencias. Total: {{ ausencias_pendientes|length }}
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
     <!-- Accesos Rápidos -->
     <div class="row">
         <div class="col-md-12">
@@ -115,4 +187,137 @@
         </div>
     </div>
 </div>
+
+<!-- Modal para justificar ausencia -->
+<div class="modal fade" id="modalJustificar" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title">Justificar Ausencia</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p><strong>Empleado:</strong> <span id="modal-empleado"></span></p>
+                <p><strong>Fecha:</strong> <span id="modal-fecha"></span></p>
+                
+                <div class="alert alert-warning">
+                    <i class="bi bi-exclamation-triangle"></i>
+                    <strong>Nota:</strong> Se descontará 1 día del salario mensual aunque la ausencia sea justificada.
+                </div>
+                
+                <div class="mb-3">
+                    <label for="motivo-justificacion" class="form-label">Motivo de la justificación:</label>
+                    <textarea class="form-control" id="motivo-justificacion" rows="3" 
+                              placeholder="Ej: Emergencia médica familiar, certificado presentado, etc."></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-success" onclick="confirmarJustificar()">
+                    <i class="bi bi-check-circle"></i> Justificar
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let ausenciaIdActual = null;
+
+function mostrarModalJustificar(ausenciaId, empleadoNombre, fecha) {
+    ausenciaIdActual = ausenciaId;
+    document.getElementById('modal-empleado').textContent = empleadoNombre;
+    document.getElementById('modal-fecha').textContent = fecha;
+    document.getElementById('motivo-justificacion').value = '';
+    
+    const modal = new bootstrap.Modal(document.getElementById('modalJustificar'));
+    modal.show();
+}
+
+function confirmarJustificar() {
+    const motivo = document.getElementById('motivo-justificacion').value.trim();
+    
+    if (!motivo) {
+        alert('Debe ingresar un motivo para la justificación');
+        return;
+    }
+    
+    const formData = new FormData();
+    formData.append('justificacion_nota', motivo);
+    formData.append('csrf_token', '{{ csrf_token() }}');
+    
+    fetch(`/rrhh/asistencia/${ausenciaIdActual}/justificar`, {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Ocultar modal
+            bootstrap.Modal.getInstance(document.getElementById('modalJustificar')).hide();
+            
+            // Mostrar mensaje
+            alert('✅ ' + data.message);
+            
+            // Eliminar fila de la tabla
+            const row = document.getElementById(`ausencia-row-${ausenciaIdActual}`);
+            if (row) {
+                row.remove();
+            }
+            
+            // Recargar si no quedan más ausencias
+            const tbody = document.querySelector('.table tbody');
+            if (tbody && tbody.children.length === 0) {
+                location.reload();
+            }
+        } else {
+            alert('❌ Error: ' + data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('❌ Error al procesar la solicitud');
+    });
+}
+
+function noJustificarAusencia(ausenciaId, empleadoNombre) {
+    if (!confirm(`¿Confirmar que la ausencia de ${empleadoNombre} NO está justificada?\n\nSe descontará 1 día del salario mensual.`)) {
+        return;
+    }
+    
+    const formData = new FormData();
+    formData.append('justificacion_nota', 'Sin motivo válido');
+    formData.append('csrf_token', '{{ csrf_token() }}');
+    
+    fetch(`/rrhh/asistencia/${ausenciaId}/no_justificar`, {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('✅ ' + data.message);
+            
+            // Eliminar fila de la tabla
+            const row = document.getElementById(`ausencia-row-${ausenciaId}`);
+            if (row) {
+                row.remove();
+            }
+            
+            // Recargar si no quedan más ausencias
+            const tbody = document.querySelector('.table tbody');
+            if (tbody && tbody.children.length === 0) {
+                location.reload();
+            }
+        } else {
+            alert('❌ Error: ' + data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('❌ Error al procesar la solicitud');
+    });
+}
+</script>
+
 {% endblock %}

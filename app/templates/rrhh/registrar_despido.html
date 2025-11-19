@@ -29,13 +29,6 @@
                             <small class="form-text text-muted">Selecciona un empleado activo</small>
                         </div>
                         
-                        <!-- Datos del empleado (información) -->
-                        <div id="div_datos_empleado" style="display:none;" class="alert alert-info mb-3">
-                                                <p><strong>Antigüedad:</strong> <span id="span_antiguedad">---</span> años</p>
-                                                <p><strong>Salario Base:</strong> <span id="span_salario">---</span></p>
-                                                <p><strong>Fecha Ingreso:</strong> <span id="span_fecha_ingreso">---</span></p>
-                                            </div>
-                        
                         <!-- Tipo de despido -->
                         <div class="form-group mb-3">
                             <label for="tipo" class="form-label fw-bold">Tipo de Despido</label>
@@ -90,6 +83,12 @@
             <div id="div_preview_calculos" style="display:none; top: 20px;" class="card bg-light border-success mb-3 sticky-top">
                 <div class="card-body">
                     <h5 class="card-title">📊 Preview de Cálculos</h5>
+                    <hr>
+                    <div class="mb-3">
+                        <p class="mb-1"><strong>Antigüedad:</strong> <span id="preview_antiguedad">---</span> años</p>
+                        <p class="mb-1"><strong>Salario Base:</strong> <span id="preview_salario">---</span></p>
+                        <p class="mb-1"><strong>Fecha Ingreso:</strong> <span id="preview_fecha_ingreso">---</span></p>
+                    </div>
                     <hr>
                     <table class="table table-sm table-borderless">
                         <tr>
@@ -154,9 +153,11 @@ function cargar_datos_empleado() {
     const option = select.options[select.selectedIndex];
     
     if (option.value === '') {
-        document.getElementById('div_datos_empleado').style.display = 'none';
         document.getElementById('div_preview_calculos').style.display = 'none';
         // Limpiar preview cuando no hay empleado seleccionado
+        document.getElementById('preview_antiguedad').textContent = '---';
+        document.getElementById('preview_salario').textContent = '---';
+        document.getElementById('preview_fecha_ingreso').textContent = '---';
         document.getElementById('preview_indemnizacion').textContent = '$0.00';
         document.getElementById('preview_aguinaldo').textContent = '$0.00';
         document.getElementById('preview_vacaciones').textContent = '$0.00';
@@ -173,10 +174,10 @@ function cargar_datos_empleado() {
     // Calcular antigüedad en años
     const antiguedad = Math.floor((hoy - fechaContrata) / (365.25 * 24 * 60 * 60 * 1000));
     
-    document.getElementById('span_antiguedad').textContent = antiguedad;
-    document.getElementById('span_salario').textContent = '$' + salario.toLocaleString('es-PY', {minimumFractionDigits: 2});
-    document.getElementById('span_fecha_ingreso').textContent = fechaContrata.toLocaleDateString('es-PY');
-    document.getElementById('div_datos_empleado').style.display = 'block';
+    // Actualizar el preview con los datos del empleado
+    document.getElementById('preview_antiguedad').textContent = antiguedad;
+    document.getElementById('preview_salario').textContent = '$' + salario.toLocaleString('es-PY', {minimumFractionDigits: 2});
+    document.getElementById('preview_fecha_ingreso').textContent = fechaContrata.toLocaleDateString('es-PY');
     
     // Siempre recalcular cuando cambia el empleado
     calcular_indemnizacion();

@@ -5,6 +5,13 @@ from flask_wtf.csrf import CSRFProtect
 from .config import config
 from .models import db, Usuario
 import os
+import warnings
+from sqlalchemy.exc import SAWarning
+
+# Suprimir warning de tabla duplicada en modo debug
+warnings.filterwarnings('ignore', 
+                       message='.*already contains a class with the same class name.*',
+                       category=SAWarning)
 
 def create_app(config_name=None):
     """Factory para crear la aplicación Flask"""
@@ -46,6 +53,31 @@ def create_app(config_name=None):
     app.register_blueprint(auth_bp)
     app.register_blueprint(rrhh_bp)
     app.register_blueprint(main_bp)
+    
+    # Configurar APScheduler para cierre automático de asistencias
+    if not app.debug or os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
+        from flask_apscheduler import APScheduler
+        from .routes.rrhh import cerrar_asistencias_automatico
+        from datetime import date
+        
+        scheduler = APScheduler()
+        scheduler.init_app(app)
+        
+        @scheduler.task('cron', id='cerrar_asistencias_diarias', hour=17, minute=30)
+        def tarea_cerrar_asistencias():
+            """Tarea programada: cierra asistencias a las 17:30 todos los días"""
+            with app.app_context():
+                try:
+                    print(f"\n🕐 Ejecutando cierre automático de asistencias - {date.today()}")
+                    stats = cerrar_asistencias_automatico()
+                    print(f"✅ {stats['mensaje']}")
+                    print(f"   Procesados: {stats['procesados']} | Vacaciones: {stats['vacaciones']} | "
+                          f"Permisos: {stats['permisos']} | Ausencias: {stats['ausencias']}")
+                except Exception as e:
+                    print(f"❌ Error en cierre automático: {e}")
+        
+        scheduler.start()
+        print("📅 Scheduler iniciado: Cierre automático de asistencias programado para las 17:30")
 
     # Crear tablas (capturar errores de conexión / encoding para diagnóstico)
     with app.app_context():

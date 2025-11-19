@@ -66,11 +66,15 @@ class ReportUtils:
         story.append(Spacer(1, 0.2*inch))
         
         # Detalles de liquidación
+        bonif_familiar = liquidacion.bonificacion_familiar or Decimal('0')
+        subtotal_ingresos = liquidacion.salario_base + liquidacion.ingresos_extras + bonif_familiar
+        
         detail_data = [
             ['CONCEPTO', 'VALOR'],
             ['Salario Base', f"₲ {float(liquidacion.salario_base):,.2f}"],
             ['Ingresos Extras', f"₲ {float(liquidacion.ingresos_extras):,.2f}"],
-            ['Subtotal Ingresos', f"₲ {float(liquidacion.salario_base + liquidacion.ingresos_extras):,.2f}"],
+            ['Bonificación Familiar', f"₲ {float(bonif_familiar):,.2f}"],
+            ['Subtotal Ingresos', f"₲ {float(subtotal_ingresos):,.2f}"],
             ['', ''],
             ['Descuentos', f"₲ {float(liquidacion.descuentos):,.2f}"],
             ['Aporte IPS (9.625%)', f"₲ {float(liquidacion.aporte_ips):,.2f}"],
@@ -152,21 +156,24 @@ class ReportUtils:
         story.append(Spacer(1, 0.2*inch))
         
         # Tabla de datos
-        data = [['Código', 'Empleado', 'Cargo', 'Salario Base', 'Ingresos', 'Descuentos', 'IPS', 'Salario Neto']]
+        data = [['Código', 'Empleado', 'Cargo', 'Salario Base', 'Ingresos', 'Bonif. Fam.', 'Descuentos', 'IPS', 'Neto']]
         
         total_salario_base = Decimal('0')
         total_ingresos = Decimal('0')
+        total_bonif_fam = Decimal('0')
         total_descuentos = Decimal('0')
         total_ips = Decimal('0')
         total_neto = Decimal('0')
         
         for empleado, liquidacion in empleados_liquidaciones:
+            bonif_fam = liquidacion.bonificacion_familiar or Decimal('0')
             data.append([
                 empleado.codigo,
                 empleado.nombre_completo,
                 empleado.cargo.nombre,
                 f"₲ {float(liquidacion.salario_base):,.0f}",
                 f"₲ {float(liquidacion.ingresos_extras):,.0f}",
+                f"₲ {float(bonif_fam):,.0f}",
                 f"₲ {float(liquidacion.descuentos):,.0f}",
                 f"₲ {float(liquidacion.aporte_ips):,.0f}",
                 f"₲ {float(liquidacion.salario_neto):,.0f}",
@@ -174,6 +181,7 @@ class ReportUtils:
             
             total_salario_base += liquidacion.salario_base
             total_ingresos += liquidacion.ingresos_extras
+            total_bonif_fam += bonif_fam
             total_descuentos += liquidacion.descuentos
             total_ips += liquidacion.aporte_ips
             total_neto += liquidacion.salario_neto
@@ -185,12 +193,13 @@ class ReportUtils:
             '',
             f"₲ {float(total_salario_base):,.0f}",
             f"₲ {float(total_ingresos):,.0f}",
+            f"₲ {float(total_bonif_fam):,.0f}",
             f"₲ {float(total_descuentos):,.0f}",
             f"₲ {float(total_ips):,.0f}",
             f"₲ {float(total_neto):,.0f}",
         ])
         
-        table = Table(data, colWidths=[0.9*inch, 2.2*inch, 1.5*inch, 1*inch, 1*inch, 1*inch, 1*inch, 1.3*inch])
+        table = Table(data, colWidths=[0.6*inch, 1.8*inch, 1.2*inch, 0.9*inch, 0.8*inch, 0.8*inch, 0.8*inch, 0.8*inch, 1*inch])
         table.setStyle(TableStyle([
             ('FONT', (0, 0), (-1, -1), 'Helvetica', 8),
             ('FONT', (0, 0), (-1, 0), 'Helvetica-Bold', 9),

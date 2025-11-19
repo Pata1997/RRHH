@@ -1,0 +1,114 @@
+{% extends 'base.html' %}
+
+{% block title %}Reporte Bonificaciones Familiares - Sistema RRHH{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <h2><i class="bi bi-file-earmark-bar-graph"></i> Reporte Consolidado de Bonificaciones Familiares</h2>
+            <p class="text-muted">Resumen mensual de bonificaciones por empleado</p>
+        </div>
+    </div>
+
+    <!-- Resumen General -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card text-center bg-light">
+                <div class="card-body">
+                    <h6 class="text-muted">Empleados con Hijos</h6>
+                    <h2 class="text-primary">{{ reporte|length }}</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center bg-light">
+                <div class="card-body">
+                    <h6 class="text-muted">Total Hijos Registrados</h6>
+                    <h2 class="text-info">{{ total_hijos }}</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center bg-light">
+                <div class="card-body">
+                    <h6 class="text-muted">Salario Mínimo</h6>
+                    <h4>{{ "%.0f"|format(salario_minimo) }} Gs</h4>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center bg-success text-white">
+                <div class="card-body">
+                    <h6>Total Bonificaciones</h6>
+                    <h3>{{ "%.0f"|format(total_bonificaciones) }} Gs</h3>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tabla de Detalle -->
+    <div class="card">
+        <div class="card-body">
+            <table class="table table-hover">
+                <thead class="table-dark">
+                    <tr>
+                        <th>Código</th>
+                        <th>Empleado</th>
+                        <th>Cargo</th>
+                        <th class="text-center">Cant. Hijos</th>
+                        <th class="text-end">Bonif. por Hijo</th>
+                        <th class="text-end">Bonif. Total</th>
+                        <th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% if reporte %}
+                        {% for item in reporte %}
+                        <tr>
+                            <td><strong>{{ item.empleado.codigo }}</strong></td>
+                            <td>{{ item.empleado.nombre_completo }}</td>
+                            <td><small>{{ item.empleado.cargo.nombre }}</small></td>
+                            <td class="text-center">
+                                <span class="badge bg-info">{{ item.cantidad_hijos }}</span>
+                            </td>
+                            <td class="text-end">{{ "%.0f"|format(bonificacion_por_hijo) }} Gs</td>
+                            <td class="text-end text-success"><strong>{{ "%.0f"|format(item.bonificacion) }} Gs</strong></td>
+                            <td>
+                                <a href="{{ url_for('rrhh.listar_hijos', empleado_id=item.empleado.id) }}" 
+                                   class="btn btn-sm btn-primary" title="Ver hijos">
+                                    <i class="bi bi-people"></i> Ver Hijos
+                                </a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    {% else %}
+                        <tr>
+                            <td colspan="7" class="text-center text-muted">
+                                No hay empleados con hijos registrados
+                            </td>
+                        </tr>
+                    {% endif %}
+                </tbody>
+                <tfoot class="table-light">
+                    <tr>
+                        <th></th>
+                        <th></th>
+                        <th></th>
+                        <th></th>
+                        <th class="text-end">TOTAL MENSUAL:</th>
+                        <th class="text-end text-success">{{ "%.0f"|format(total_bonificaciones) }} Gs</th>
+                        <th></th>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    </div>
+
+    <div class="alert alert-info mt-3">
+        <i class="bi bi-info-circle"></i>
+        <strong>Fórmula:</strong> Bonificación Familiar = (Salario Mínimo × 5%) × Cantidad de hijos activos<br>
+        <strong>Base Legal:</strong> Ley paraguaya - 5% del salario mínimo por cada hijo menor de 18 años, mayor estudiante o con discapacidad.
+    </div>
+</div>
+{% endblock %}

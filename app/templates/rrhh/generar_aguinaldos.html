@@ -80,8 +80,13 @@
                             Genera el pago del aguinaldo (13º sueldo) para todos los empleados activos.
                         </li>
                         <li class="mb-2">
-                            <strong>¿Cómo se calcula?</strong><br>
-                            Aguinaldo = (Meses trabajados / 12) × Salario Base
+                            <strong>✅ Método Legal (Ley Paraguaya):</strong><br>
+                            <span class="text-success">Aguinaldo = Total devengado en el año / 12</span><br>
+                            <small class="text-muted">Incluye: salarios + horas extras + comisiones + bonificaciones habituales</small>
+                        </li>
+                        <li class="mb-2">
+                            <strong>📊 Si no hay liquidaciones:</strong><br>
+                            <small>Se calcula proporcionalmente usando el salario base actual</small>
                         </li>
                         <li>
                             <strong>Descuentos:</strong> Se aplica 9% de IPS automáticamente.
@@ -138,7 +143,7 @@
                                         <th>Empleado</th>
                                         <th>Cargo</th>
                                         <th class="text-end">Salario Base</th>
-                                        <th class="text-end">Meses</th>
+                                        <th class="text-end">Total Devengado Año</th>
                                         <th class="text-end">Aguinaldo Bruto</th>
                                         <th class="text-end">(-) IPS 9%</th>
                                         <th class="text-end">Neto</th>
@@ -150,7 +155,13 @@
                                         <td>{{ item.empleado.nombre_completo }}</td>
                                         <td><small>{{ item.empleado.cargo.nombre }}</small></td>
                                         <td class="text-end">{{ "%.0f"|format(item.empleado.salario_base) }}</td>
-                                        <td class="text-end">{{ "%.2f"|format(item.meses) }}</td>
+                                        <td class="text-end">
+                                            {% if item.total_devengado > 0 %}
+                                                <span class="badge bg-success">{{ "%.0f"|format(item.total_devengado) }}</span>
+                                            {% else %}
+                                                <span class="badge bg-secondary">Sin liquidaciones</span>
+                                            {% endif %}
+                                        </td>
                                         <td class="text-end"><strong>{{ "%.0f"|format(item.aguinaldo_bruto) }}</strong></td>
                                         <td class="text-end text-warning"><strong>{{ "%.0f"|format(item.ips) }}</strong></td>
                                         <td class="text-end text-success"><strong>{{ "%.0f"|format(item.aguinaldo_neto) }}</strong></td>

@@ -46,6 +46,7 @@
                             <a href="{{ url_for('rrhh.perfil_empleado', empleado_id=empleado.id) }}" class="btn btn-sm btn-info" title="Ver perfil completo">
                                 <i class="bi bi-eye"></i> Ver
                             </a>
+                            {% if empleado.estado.name == 'ACTIVO' %}
                             <a href="{{ url_for('rrhh.perfil_empleado', empleado_id=empleado.id) }}#contratos" class="btn btn-sm btn-secondary" title="Contratos">
                                 <i class="bi bi-file-earmark-text"></i> Contratos
                             </a>
@@ -55,6 +56,7 @@
                             <button class="btn btn-sm btn-danger" onclick="eliminarEmpleado({{ empleado.id }})">
                                 <i class="bi bi-trash"></i>
                             </button>
+                            {% endif %}
                         </td>
                     </tr>
                     {% endfor %}

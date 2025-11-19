@@ -7,12 +7,110 @@
     <div class="row mb-3">
         <div class="col-md-8">
             <h3><i class="bi bi-person-badge"></i> Historial de Vacaciones: {{ empleado.nombre_completo }}</h3>
-            <p class="text-muted">Código: <strong>{{ empleado.codigo }}</strong></p>
+            <p class="text-muted mb-1">Código: <strong>{{ empleado.codigo }}</strong></p>
+            <p class="text-muted mb-1">Antigüedad: <strong>{{ empleado.antiguedad_texto }}</strong></p>
+            {% if empleado.dias_vacaciones_actuales %}
+            <p class="text-info mb-0">
+                <i class="bi bi-calendar-check"></i> 
+                Días de vacaciones por antigüedad: <strong>{{ empleado.dias_vacaciones_actuales }} días/año</strong>
+            </p>
+            {% endif %}
         </div>
         <div class="col-md-4 text-end">
             <a href="{{ url_for('rrhh.listar_vacaciones') }}" class="btn btn-secondary">← Volver</a>
         </div>
     </div>
+
+    <!-- Alerta de vencimiento -->
+    {% if saldo and saldo.alerta %}
+    <div class="alert alert-warning alert-dismissible fade show" role="alert">
+        <h5 class="alert-heading">⚠️ Alerta de Vencimiento de Vacaciones</h5>
+        <p class="mb-2">
+            <strong>{{ empleado.nombre_completo }}</strong> tiene <strong>{{ saldo.por_vencer }} días</strong> acumulados que vencerán pronto.
+        </p>
+        <hr>
+        <p class="mb-0">
+            📅 <strong>Días por vencer:</strong> {{ saldo.por_vencer }} días<br>
+            📆 <strong>Fecha límite:</strong> {{ saldo.fecha_vencimiento.strftime('%d/%m/%Y') if saldo.fecha_vencimiento else 'N/A' }}<br>
+            <small class="text-muted">Si no se toman vacaciones antes de esta fecha, estos días se perderán según el Código Laboral Paraguayo (máximo 2 años de acumulación).</small>
+        </p>
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+    {% endif %}
+
+    <!-- Resumen de saldo actual -->
+    {% if saldo %}
+    <div class="card mb-4">
+        <div class="card-header bg-primary text-white">
+            <strong><i class="bi bi-calculator"></i> Resumen de Saldo de Vacaciones (Cálculo Automático)</strong>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-3">
+                    <div class="text-center p-3 border rounded">
+                        <h4 class="text-primary mb-0">{{ saldo.disponibles_total }}</h4>
+                        <small class="text-muted">Días Disponibles (3 años)</small>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="text-center p-3 border rounded">
+                        <h4 class="text-danger mb-0">{{ saldo.tomados_total }}</h4>
+                        <small class="text-muted">Días Tomados</small>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="text-center p-3 border rounded">
+                        <h4 class="text-success mb-0">{{ saldo.pendientes }}</h4>
+                        <small class="text-muted">Días Pendientes</small>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="text-center p-3 border rounded {% if saldo.alerta %}bg-warning{% endif %}">
+                        <h4 class="mb-0 {% if saldo.alerta %}text-dark{% else %}text-muted{% endif %}">{{ saldo.por_vencer }}</h4>
+                        <small class="{% if saldo.alerta %}text-dark{% else %}text-muted{% endif %}">Por Vencer</small>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Desglose por año -->
+            {% if saldo.desglose_años %}
+            <hr>
+            <h6 class="mb-3"><i class="bi bi-list-ul"></i> Desglose por Año:</h6>
+            <table class="table table-sm table-bordered">
+                <thead class="table-light">
+                    <tr>
+                        <th>Año</th>
+                        <th>Días Ganados</th>
+                        <th>Días Tomados</th>
+                        <th>Saldo</th>
+                        <th>Estado</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for detalle in saldo.desglose_años %}
+                    <tr {% if detalle.vence %}class="table-warning"{% endif %}>
+                        <td><strong>{{ detalle.año }}</strong></td>
+                        <td>{{ detalle.ganados }}</td>
+                        <td>{{ detalle.tomados }}</td>
+                        <td><strong>{{ detalle.saldo }}</strong></td>
+                        <td>
+                            {% if detalle.vence %}
+                                <span class="badge bg-warning text-dark">⚠️ Vence 31/12/{{ detalle.año + 2 }}</span>
+                            {% else %}
+                                <span class="badge bg-success">Vigente</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+            <small class="text-muted">
+                <i class="bi bi-info-circle"></i> Los días de vacaciones se calculan automáticamente desde la fecha de ingreso y vencen después de 2 años.
+            </small>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
 
     <div class="card mb-4">
         <div class="card-header">

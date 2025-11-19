@@ -28,8 +28,16 @@ def dashboard():
     # Últimas liquidaciones
     ultima_liquidacion = Liquidacion.query.order_by(Liquidacion.id.desc()).first()
     
+    # 🚨 AUSENCIAS PENDIENTES DE JUSTIFICACIÓN
+    # Buscar todas las ausencias con estado PENDIENTE (sin importar la fecha)
+    ausencias_pendientes = Asistencia.query.filter(
+        Asistencia.presente == False,
+        Asistencia.justificacion_estado == 'PENDIENTE'
+    ).order_by(Asistencia.fecha.desc()).all()
+    
     return render_template('dashboard.html',
                            total_empleados=total_empleados,
                            empleados_activos=empleados_activos,
                            asistencias_hoy=asistencias_hoy,
-                           ultima_liquidacion=ultima_liquidacion)
+                           ultima_liquidacion=ultima_liquidacion,
+                           ausencias_pendientes=ausencias_pendientes)

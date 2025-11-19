@@ -27,6 +27,7 @@
                         <th>Período</th>
                         <th>Salario Base</th>
                         <th>Ingresos Extra</th>
+                        <th>Bonif. Familiar</th>
                         <th>Descuentos</th>
                         <th>IPS</th>
                         <th>Neto</th>
@@ -40,6 +41,7 @@
                         <td>{{ liquidacion.periodo }}</td>
                         <td>₲ {{ "%.2f"|format(liquidacion.salario_base) }}</td>
                         <td>₲ {{ "%.2f"|format(liquidacion.ingresos_extras) }}</td>
+                        <td>₲ {{ "%.2f"|format(liquidacion.bonificacion_familiar or 0) }}</td>
                         <td>₲ {{ "%.2f"|format(liquidacion.descuentos) }}</td>
                         <td>₲ {{ "%.2f"|format(liquidacion.aporte_ips) }}</td>
                         <td><strong>₲ {{ "%.2f"|format(liquidacion.salario_neto) }}</strong></td>

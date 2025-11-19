@@ -1,0 +1,114 @@
+{% extends 'base.html' %}
+
+{% block title %}Editar Hijo - Sistema RRHH{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-md-8 offset-md-2">
+            <h2><i class="bi bi-pencil"></i> Editar Información del Hijo</h2>
+            <p class="text-muted">{{ hijo.hijo_nombre_completo }} - Empleado: <strong>{{ empleado.nombre_completo }}</strong></p>
+            <hr>
+
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <form method="POST" enctype="multipart/form-data">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="hijo_nombre" class="form-label">Nombre *</label>
+                                <input type="text" class="form-control" id="hijo_nombre" name="hijo_nombre" value="{{ hijo.hijo_nombre }}" required>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="hijo_apellido" class="form-label">Apellido *</label>
+                                <input type="text" class="form-control" id="hijo_apellido" name="hijo_apellido" value="{{ hijo.hijo_apellido }}" required>
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-4 mb-3">
+                                <label for="hijo_ci" class="form-label">CI</label>
+                                <input type="text" class="form-control" id="hijo_ci" name="hijo_ci" value="{{ hijo.hijo_ci or '' }}">
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label for="hijo_fecha_nacimiento" class="form-label">Fecha de Nacimiento *</label>
+                                <input type="date" class="form-control" id="hijo_fecha_nacimiento" name="hijo_fecha_nacimiento" value="{{ hijo.hijo_fecha_nacimiento }}" required>
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label for="sexo" class="form-label">Sexo</label>
+                                <select class="form-select" id="sexo" name="sexo">
+                                    <option value="">Seleccionar</option>
+                                    <option value="M" {% if hijo.sexo == 'M' %}selected{% endif %}>Masculino</option>
+                                    <option value="F" {% if hijo.sexo == 'F' %}selected{% endif %}>Femenino</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="tipo" class="form-label">Tipo *</label>
+                            <select class="form-select" id="tipo" name="tipo" required onchange="mostrarCamposDocumentos()">
+                                {% for tipo in tipos_hijo %}
+                                    <option value="{{ tipo.name }}" {% if hijo.tipo.name == tipo.name %}selected{% endif %}>{{ tipo.value }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <h5 class="mb-3 mt-4"><i class="bi bi-file-earmark-arrow-up"></i> Actualizar Documentos</h5>
+                        
+                        <div class="mb-3">
+                            <label for="certificado_nacimiento" class="form-label">Certificado de Nacimiento</label>
+                            {% if hijo.certificado_nacimiento %}
+                                <p class="text-muted"><i class="bi bi-file-check"></i> Archivo actual: {{ hijo.certificado_nacimiento }}</p>
+                            {% endif %}
+                            <input type="file" class="form-control" id="certificado_nacimiento" name="certificado_nacimiento" accept=".pdf,.jpg,.jpeg,.png">
+                        </div>
+
+                        <div class="mb-3" id="div_certificado_estudio">
+                            <label for="certificado_estudio" class="form-label">Certificado de Estudio</label>
+                            {% if hijo.certificado_estudio %}
+                                <p class="text-muted"><i class="bi bi-file-check"></i> Archivo actual: {{ hijo.certificado_estudio }}</p>
+                            {% endif %}
+                            <input type="file" class="form-control" id="certificado_estudio" name="certificado_estudio" accept=".pdf,.jpg,.jpeg,.png">
+                        </div>
+
+                        <div class="mb-3" id="div_certificado_discapacidad">
+                            <label for="certificado_discapacidad" class="form-label">Certificado de Discapacidad</label>
+                            {% if hijo.certificado_discapacidad %}
+                                <p class="text-muted"><i class="bi bi-file-check"></i> Archivo actual: {{ hijo.certificado_discapacidad }}</p>
+                            {% endif %}
+                            <input type="file" class="form-control" id="certificado_discapacidad" name="certificado_discapacidad" accept=".pdf,.jpg,.jpeg,.png">
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="observaciones" class="form-label">Observaciones</label>
+                            <textarea class="form-control" id="observaciones" name="observaciones" rows="3">{{ hijo.observaciones or '' }}</textarea>
+                        </div>
+
+                        <div class="d-flex gap-2">
+                            <button type="submit" class="btn btn-primary">
+                                <i class="bi bi-check-circle"></i> Actualizar
+                            </button>
+                            <a href="{{ url_for('rrhh.listar_hijos', empleado_id=empleado.id) }}" class="btn btn-secondary">
+                                <i class="bi bi-x-circle"></i> Cancelar
+                            </a>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function mostrarCamposDocumentos() {
+    const tipo = document.getElementById('tipo').value;
+    const divEstudio = document.getElementById('div_certificado_estudio');
+    const divDiscapacidad = document.getElementById('div_certificado_discapacidad');
+    
+    divEstudio.style.display = tipo === 'MAYOR_ESTUDIANTE' ? 'block' : 'none';
+    divDiscapacidad.style.display = tipo === 'INCAPACITADO' ? 'block' : 'none';
+}
+
+document.addEventListener('DOMContentLoaded', mostrarCamposDocumentos);
+</script>
+{% endblock %}

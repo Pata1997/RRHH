@@ -213,6 +213,15 @@ class Asistencia(db.Model):
     observaciones = db.Column(db.Text)
     fecha_creacion = db.Column(db.DateTime, default=datetime.utcnow)
     
+    # Campos de justificación de ausencias
+    justificacion_estado = db.Column(db.String(20), nullable=True)  # PENDIENTE, JUSTIFICADO, INJUSTIFICADO
+    justificacion_nota = db.Column(db.Text, nullable=True)
+    justificacion_fecha = db.Column(db.DateTime, nullable=True)
+    justificacion_por = db.Column(db.Integer, db.ForeignKey('usuarios.id'), nullable=True)
+    
+    # Relación con usuario que justificó
+    justificador = db.relationship('Usuario', foreign_keys=[justificacion_por], backref='justificaciones_hechas')
+    
     __table_args__ = (db.UniqueConstraint('empleado_id', 'fecha', name='uq_empleado_fecha'),)
     
     def __repr__(self):
@@ -372,6 +381,7 @@ class Liquidacion(db.Model):
     empleado_id = db.Column(db.Integer, db.ForeignKey('empleados.id'), nullable=False)
     periodo = db.Column(db.String(10), nullable=False)  # YYYY-MM
     salario_base = db.Column(db.Numeric(12, 2), nullable=False)
+    bonificacion_familiar = db.Column(db.Numeric(12, 2), default=0)  # 5% salario mínimo × hijos
     ingresos_extras = db.Column(db.Numeric(12, 2), default=0)
     descuentos = db.Column(db.Numeric(12, 2), default=0)
     aporte_ips = db.Column(db.Numeric(12, 2), default=0)  # 9.625%
@@ -505,33 +515,6 @@ class FamiliarEmpleado(db.Model):
     def __repr__(self):
         return f'<FamiliarEmpleado {self.nombre} de {self.empleado.nombre}>'
 
-# ===================== BONIFICACION FAMILIAR =====================
-class BonificacionFamiliar(db.Model):
-    """Registro de bonificaciones por familiares/dependientes por mes"""
-    __tablename__ = 'bonificaciones_familiares'
-    
-    id = db.Column(db.Integer, primary_key=True)
-    liquidacion_id = db.Column(db.Integer, db.ForeignKey('liquidaciones.id'), nullable=False)
-    liquidacion = db.relationship('Liquidacion', backref='bonificaciones_familiares')
-    
-    empleado_id = db.Column(db.Integer, db.ForeignKey('empleados.id'), nullable=False)
-    empleado = db.relationship('Empleado', backref='bonificaciones_familiares')
-    
-    familiar_id = db.Column(db.Integer, db.ForeignKey('familiares_empleados.id'), nullable=False)
-    familiar = db.relationship('FamiliarEmpleado')
-    
-    # Monto por dependiente (configurable por empresa, ej: 50000 Gs.)
-    monto_unitario = db.Column(db.Numeric(12, 2), nullable=False)
-    
-    # Mes/Año de aplicación
-    mes = db.Column(db.Integer)  # 1-12
-    año = db.Column(db.Integer)
-    
-    fecha_creacion = db.Column(db.DateTime, default=datetime.utcnow)
-    
-    def __repr__(self):
-        return f'<BonificacionFamiliar {self.empleado.codigo} - {self.monto_unitario}>'
-
 # ===================== POSTULANTE =====================
 class Postulante(db.Model):
     """Postulante a vacantes (módulo de reclutamiento)"""
@@ -598,3 +581,97 @@ class DocumentosCurriculum(db.Model):
     
     def __repr__(self):
         return f'<DocumentosCurriculum {self.postulante.nombre} - {self.tipo}>'
+
+# ===================== SALARIO MINIMO =====================
+class SalarioMinimo(db.Model):
+    """Histórico de salarios mínimos legales en Paraguay"""
+    __tablename__ = 'salarios_minimos'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    año = db.Column(db.Integer, nullable=False)
+    monto = db.Column(db.Numeric(12, 2), nullable=False)
+    vigencia_desde = db.Column(db.Date, nullable=False)
+    vigencia_hasta = db.Column(db.Date, nullable=True)  # NULL = vigente actualmente
+    
+    # Auditoría
+    fecha_creacion = db.Column(db.DateTime, default=datetime.utcnow)
+    usuario_creador_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'), nullable=True)
+    
+    def __repr__(self):
+        return f'<SalarioMinimo {self.año} - {self.monto} Gs.>'
+    
+    @property
+    def esta_vigente(self):
+        """Verifica si el salario mínimo está vigente actualmente"""
+        hoy = date.today()
+        return self.vigencia_desde <= hoy and (self.vigencia_hasta is None or self.vigencia_hasta >= hoy)
+
+# ===================== TIPO HIJO ENUM =====================
+class TipoHijoEnum(Enum):
+    MENOR_18 = "Menor de 18 años"
+    MAYOR_ESTUDIANTE = "Mayor de 18 años - Estudiante"
+    INCAPACITADO = "Hijo con discapacidad"
+
+# ===================== BONIFICACION FAMILIAR =====================
+class BonificacionFamiliar(db.Model):
+    """Registro de hijos de empleados para cálculo de bonificación familiar"""
+    __tablename__ = 'bonificaciones_familiares'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    empleado_id = db.Column(db.Integer, db.ForeignKey('empleados.id'), nullable=False)
+    
+    # Datos del hijo
+    hijo_nombre = db.Column(db.String(120), nullable=False)
+    hijo_apellido = db.Column(db.String(120), nullable=False)
+    hijo_ci = db.Column(db.String(20), nullable=True)  # Opcional para menores
+    hijo_fecha_nacimiento = db.Column(db.Date, nullable=False)
+    sexo = db.Column(db.String(1), nullable=True)  # M/F
+    
+    # Tipo y documentación
+    tipo = db.Column(db.Enum(TipoHijoEnum, values_callable=lambda x: [e.value for e in x]), default=TipoHijoEnum.MENOR_18, nullable=False)
+    certificado_nacimiento = db.Column(db.String(500), nullable=True)  # Ruta al archivo
+    certificado_estudio = db.Column(db.String(500), nullable=True)  # Para mayores estudiantes
+    certificado_discapacidad = db.Column(db.String(500), nullable=True)  # Para hijos con discapacidad
+    
+    # Estado
+    activo = db.Column(db.Boolean, default=True)
+    fecha_registro = db.Column(db.Date, default=date.today)
+    fecha_baja = db.Column(db.Date, nullable=True)  # Cuando cumple 18, termina estudios, etc.
+    motivo_baja = db.Column(db.String(255), nullable=True)
+    
+    # Observaciones
+    observaciones = db.Column(db.Text)
+    
+    # Auditoría
+    fecha_creacion = db.Column(db.DateTime, default=datetime.utcnow)
+    fecha_actualizacion = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Relación
+    empleado = db.relationship('Empleado', backref='hijos_bonificacion')
+    
+    def __repr__(self):
+        return f'<BonificacionFamiliar {self.empleado.nombre} - Hijo: {self.hijo_nombre} {self.hijo_apellido}>'
+    
+    @property
+    def hijo_nombre_completo(self):
+        return f'{self.hijo_nombre} {self.hijo_apellido}'
+    
+    @property
+    def edad_actual(self):
+        """Calcula la edad actual del hijo"""
+        hoy = date.today()
+        edad = hoy.year - self.hijo_fecha_nacimiento.year
+        if hoy.month < self.hijo_fecha_nacimiento.month or (hoy.month == self.hijo_fecha_nacimiento.month and hoy.day < self.hijo_fecha_nacimiento.day):
+            edad -= 1
+        return edad
+    
+    @property
+    def debe_dar_baja_automatica(self):
+        """Verifica si el hijo debe ser dado de baja automáticamente (cumplió 18 y no es estudiante ni tiene discapacidad)"""
+        if self.tipo == TipoHijoEnum.INCAPACITADO:
+            return False
+        if self.tipo == TipoHijoEnum.MAYOR_ESTUDIANTE:
+            return False  # Requiere revisión manual
+        if self.edad_actual >= 18:
+            return True
+        return False

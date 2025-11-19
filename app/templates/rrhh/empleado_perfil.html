@@ -219,6 +219,11 @@
                     </button>
                 </li>
                 <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="hijos-tab" data-bs-toggle="tab" data-bs-target="#hijos" type="button" role="tab">
+                        <i class="bi bi-people-fill"></i> Hijos
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
                     <button class="nav-link" id="anticipos-tab" data-bs-toggle="tab" data-bs-target="#anticipos" type="button" role="tab">
                         <i class="bi bi-coin"></i> Mis Adelantos
                     </button>
@@ -343,6 +348,22 @@
                         {% endif %}
                     </div>
                 </div>
+
+                <!-- Tab Hijos (Bonificación Familiar) -->
+                <div class="tab-pane fade" id="hijos" role="tabpanel">
+                    <div class="d-flex justify-content-between mb-3">
+                        <h5><i class="bi bi-people-fill"></i> Hijos - Bonificación Familiar</h5>
+                        <a href="{{ url_for('rrhh.listar_hijos', empleado_id=empleado.id) }}" class="btn btn-primary btn-sm">
+                            <i class="bi bi-eye"></i> Ver Completo
+                        </a>
+                    </div>
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle"></i>
+                        <strong>Bonificación:</strong> 5% del salario mínimo por cada hijo = 
+                        <span class="text-success"><strong id="bonif-preview">Cargando...</strong></span>
+                    </div>
+                    <div id="hijos-preview"></div>
+                </div>
             </div>
         </div>
     </div>
@@ -393,8 +414,35 @@
         cargarIngresosExtras(1);
     });
     
+    document.getElementById('hijos-tab') && document.getElementById('hijos-tab').addEventListener('shown.bs.tab', function() {
+        cargarHijosPreview();
+    });
+    
     // Cargar datos del tab general al inicial
     cargarGeneral();
+    
+    // Función para cargar preview de hijos
+    function cargarHijosPreview() {
+        fetch(`/rrhh/empleado/${empleadoId}/hijos`)
+            .then(response => response.text())
+            .then(html => {
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(html, 'text/html');
+                const bonif = doc.querySelector('.card.bg-success h3') ? doc.querySelector('.card.bg-success h3').textContent : '0 Gs';
+                const hijosCount = doc.querySelector('.card.bg-light h2') ? doc.querySelector('.card.bg-light h2').textContent : '0';
+                
+                document.getElementById('bonif-preview').textContent = bonif;
+                document.getElementById('hijos-preview').innerHTML = `
+                    <p class="text-center"><strong>${hijosCount}</strong> hijo(s) registrado(s)</p>
+                    <a href="/rrhh/empleado/${empleadoId}/hijos" class="btn btn-sm btn-outline-primary w-100">
+                        <i class="bi bi-people"></i> Gestionar Hijos y Documentos
+                    </a>
+                `;
+            })
+            .catch(err => {
+                document.getElementById('hijos-preview').innerHTML = '<p class="text-danger">Error al cargar hijos</p>';
+            });
+    }
 </script>
 
 {% endblock %}
