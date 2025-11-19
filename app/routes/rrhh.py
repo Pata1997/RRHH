@@ -1876,6 +1876,233 @@ def rechazar_hora_extra(hora_id):
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
 
+@rrhh_bp.route('/liquidaciones/preview/<periodo>', methods=['GET'])
+@login_required
+@role_required(RoleEnum.RRHH)
+def preview_liquidacion(periodo):
+    """Pre-visualización de liquidación antes de generar"""
+    try:
+        año, mes = map(int, periodo.split('-'))
+        empleados = Empleado.query.filter_by(estado=EstadoEmpleadoEnum.ACTIVO).all()
+        
+        preview_data = []
+        totales = {
+            'salarios': Decimal('0'),
+            'bonificaciones': Decimal('0'),
+            'ingresos': Decimal('0'),
+            'descuentos': Decimal('0'),
+            'anticipos': Decimal('0'),
+            'ips': Decimal('0'),
+            'neto': Decimal('0')
+        }
+        
+        for empleado in empleados:
+            # Calcular días presentes
+            dias_presentes = db.session.query(func.count(Asistencia.id)).filter(
+                Asistencia.empleado_id == empleado.id,
+                func.extract('month', Asistencia.fecha) == mes,
+                func.extract('year', Asistencia.fecha) == año,
+                Asistencia.presente == True
+            ).scalar() or 0
+            
+            salario_proporcional = (empleado.salario_base / 30) * dias_presentes
+            
+            # Ingresos extras
+            ingresos = db.session.query(func.coalesce(func.sum(IngresoExtra.monto), 0)).filter(
+                IngresoExtra.empleado_id == empleado.id,
+                IngresoExtra.mes == mes,
+                IngresoExtra.año == año,
+                IngresoExtra.estado == 'APROBADO',
+                IngresoExtra.aplicado == False
+            ).scalar() or Decimal('0')
+            
+            # Bonificación
+            bonificacion = calcular_bonificacion_familiar(empleado.id, date(año, mes, 1))
+            
+            # Descuentos
+            descuentos = db.session.query(func.sum(Descuento.monto)).filter(
+                Descuento.empleado_id == empleado.id,
+                Descuento.mes == mes,
+                Descuento.año == año
+            ).scalar() or Decimal('0')
+            
+            # Anticipos
+            anticipos = db.session.query(func.sum(Anticipo.monto)).filter(
+                Anticipo.empleado_id == empleado.id,
+                func.extract('month', Anticipo.fecha_aprobacion) == mes,
+                func.extract('year', Anticipo.fecha_aprobacion) == año,
+                Anticipo.aprobado == True,
+                Anticipo.aplicado == False
+            ).scalar() or Decimal('0')
+            
+            descuentos_total = descuentos + anticipos
+            ips = (salario_proporcional + ingresos + bonificacion) * Decimal('0.09625')
+            neto = salario_proporcional + ingresos + bonificacion - descuentos_total - ips
+            
+            preview_data.append({
+                'codigo': empleado.codigo,
+                'nombre': empleado.nombre_completo,
+                'dias': dias_presentes,
+                'salario': float(salario_proporcional),
+                'bonificacion': float(bonificacion),
+                'ingresos': float(ingresos),
+                'descuentos': float(descuentos),
+                'anticipos': float(anticipos),
+                'ips': float(ips),
+                'neto': float(neto)
+            })
+            
+            totales['salarios'] += salario_proporcional
+            totales['bonificaciones'] += bonificacion
+            totales['ingresos'] += ingresos
+            totales['descuentos'] += descuentos
+            totales['anticipos'] += anticipos
+            totales['ips'] += ips
+            totales['neto'] += neto
+        
+        return jsonify({
+            'periodo': periodo,
+            'empleados': preview_data,
+            'totales': {k: float(v) for k, v in totales.items()},
+            'cantidad_empleados': len(preview_data)
+        })
+    
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@rrhh_bp.route('/anticipos/pendientes', methods=['GET'])
+@login_required
+@role_required(RoleEnum.RRHH)
+def anticipos_pendientes():
+    """Reporte de anticipos pendientes de aplicar"""
+    anticipos = db.session.query(
+        Anticipo, Empleado
+    ).join(
+        Empleado, Anticipo.empleado_id == Empleado.id
+    ).filter(
+        Anticipo.aprobado == True,
+        Anticipo.aplicado == False
+    ).order_by(Anticipo.fecha_aprobacion.desc()).all()
+    
+    datos = []
+    total = Decimal('0')
+    for anticipo, empleado in anticipos:
+        periodo_descuento = anticipo.fecha_aprobacion.strftime('%Y-%m')
+        
+        # Verificar si ya se generó liquidación para ese período
+        liquidacion = Liquidacion.query.filter_by(
+            empleado_id=empleado.id,
+            periodo=periodo_descuento
+        ).first()
+        
+        datos.append({
+            'id': anticipo.id,
+            'empleado_codigo': empleado.codigo,
+            'empleado_nombre': empleado.nombre_completo,
+            'monto': float(anticipo.monto),
+            'fecha_aprobacion': anticipo.fecha_aprobacion.strftime('%d/%m/%Y'),
+            'periodo_a_descontar': periodo_descuento,
+            'estado': 'Ya liquidado (no descontado)' if liquidacion else 'Pendiente de liquidación'
+        })
+        total += anticipo.monto
+    
+    return jsonify({
+        'anticipos': datos,
+        'total': float(total),
+        'cantidad': len(datos)
+    })
+
+@rrhh_bp.route('/metricas/asistencias', methods=['GET'])
+@login_required
+@role_required(RoleEnum.RRHH)
+def metricas_asistencias():
+    """Dashboard de métricas de asistencias"""
+    mes = request.args.get('mes', date.today().month, type=int)
+    año = request.args.get('year', date.today().year, type=int)
+    
+    # Calcular días hábiles del mes
+    import calendar
+    primer_dia = date(año, mes, 1)
+    ultimo_dia = date(año, mes, calendar.monthrange(año, mes)[1])
+    
+    dias_habiles = 0
+    fecha_actual = primer_dia
+    while fecha_actual <= ultimo_dia:
+        if fecha_actual.weekday() < 5:  # Lunes a viernes
+            dias_habiles += 1
+        fecha_actual += timedelta(days=1)
+    
+    # Métricas por empleado
+    empleados = Empleado.query.filter_by(estado=EstadoEmpleadoEnum.ACTIVO).all()
+    metricas = []
+    
+    for empleado in empleados:
+        dias_presentes = db.session.query(func.count(Asistencia.id)).filter(
+            Asistencia.empleado_id == empleado.id,
+            func.extract('month', Asistencia.fecha) == mes,
+            func.extract('year', Asistencia.fecha) == año,
+            Asistencia.presente == True
+        ).scalar() or 0
+        
+        ausencias = db.session.query(func.count(Asistencia.id)).filter(
+            Asistencia.empleado_id == empleado.id,
+            func.extract('month', Asistencia.fecha) == mes,
+            func.extract('year', Asistencia.fecha) == año,
+            Asistencia.presente == False
+        ).scalar() or 0
+        
+        ausencias_justificadas = db.session.query(func.count(Asistencia.id)).filter(
+            Asistencia.empleado_id == empleado.id,
+            func.extract('month', Asistencia.fecha) == mes,
+            func.extract('year', Asistencia.fecha) == año,
+            Asistencia.presente == False,
+            Asistencia.justificacion_estado == 'JUSTIFICADO'
+        ).scalar() or 0
+        
+        ausencias_injustificadas = db.session.query(func.count(Asistencia.id)).filter(
+            Asistencia.empleado_id == empleado.id,
+            func.extract('month', Asistencia.fecha) == mes,
+            func.extract('year', Asistencia.fecha) == año,
+            Asistencia.presente == False,
+            Asistencia.justificacion_estado == 'INJUSTIFICADO'
+        ).scalar() or 0
+        
+        tasa_asistencia = (dias_presentes / dias_habiles * 100) if dias_habiles > 0 else 0
+        
+        metricas.append({
+            'empleado_id': empleado.id,
+            'codigo': empleado.codigo,
+            'nombre': empleado.nombre_completo,
+            'dias_presentes': dias_presentes,
+            'ausencias_totales': ausencias,
+            'ausencias_justificadas': ausencias_justificadas,
+            'ausencias_injustificadas': ausencias_injustificadas,
+            'tasa_asistencia': round(tasa_asistencia, 2)
+        })
+    
+    # Ordenar por ausencias injustificadas (mayor a menor)
+    metricas.sort(key=lambda x: x['ausencias_injustificadas'], reverse=True)
+    
+    # Resumen general
+    total_presentes = sum(m['dias_presentes'] for m in metricas)
+    total_ausencias = sum(m['ausencias_totales'] for m in metricas)
+    total_justificadas = sum(m['ausencias_justificadas'] for m in metricas)
+    total_injustificadas = sum(m['ausencias_injustificadas'] for m in metricas)
+    
+    return jsonify({
+        'periodo': f'{año}-{mes:02d}',
+        'dias_habiles': dias_habiles,
+        'empleados': metricas,
+        'resumen': {
+            'total_empleados': len(metricas),
+            'total_presentes': total_presentes,
+            'total_ausencias': total_ausencias,
+            'total_justificadas': total_justificadas,
+            'total_injustificadas': total_injustificadas,
+            'tasa_general': round((total_presentes / (len(metricas) * dias_habiles) * 100) if dias_habiles > 0 and len(metricas) > 0 else 0, 2)
+        }
+    })
+
 @rrhh_bp.route('/liquidaciones/generar', methods=['GET', 'POST'])
 @login_required
 @role_required(RoleEnum.RRHH)
@@ -1925,10 +2152,23 @@ def generar_liquidacion():
                 dias_ausentes = dias_habiles_teoricos - dias_presentes
                 
                 # ========================================
+                # VALIDACIÓN: Días presentes no puede superar días hábiles
+                # ========================================
+                if dias_presentes > dias_habiles_teoricos:
+                    print(f"⚠️ ALERTA: Empleado {empleado.codigo} tiene {dias_presentes} días presentes pero solo hay {dias_habiles_teoricos} días hábiles")
+                    flash(f'Advertencia: {empleado.nombre_completo} tiene inconsistencia en asistencias ({dias_presentes} > {dias_habiles_teoricos})', 'warning')
+                
+                # ========================================
                 # CALCULAR SALARIO PROPORCIONAL
                 # ========================================
+                print(f"\n{'='*60}")
+                print(f"📊 LIQUIDACIÓN: {empleado.codigo} - {empleado.nombre_completo}")
+                print(f"{'='*60}")
                 salario_diario = empleado.salario_base / Decimal(30)
                 salario_base_ajustado = salario_diario * Decimal(str(dias_presentes))
+                print(f"💰 Salario base: ₲{empleado.salario_base:,.2f}")
+                print(f"📅 Días presentes: {dias_presentes}/{dias_habiles_teoricos}")
+                print(f"💵 Salario proporcional: ₲{salario_base_ajustado:,.2f}")
                 
                 # Calcular ingresos extras: incluir solo ingresos manuales APROBADOS y horas extra APROBADAS
                 ingresos_extras = db.session.query(func.coalesce(func.sum(IngresoExtra.monto), 0)).filter(
@@ -1950,32 +2190,53 @@ def generar_liquidacion():
 
                 # Asegurar Decimal y sumar
                 ingresos_extras = Decimal(str(ingresos_extras)) + Decimal(str(horas_extra_total))
+                print(f"➕ Ingresos extras: ₲{ingresos_extras:,.2f}")
                 
-                # Calcular descuentos
+                # Calcular descuentos manuales
                 descuentos = db.session.query(func.sum(Descuento.monto)).filter(
                     Descuento.empleado_id == empleado.id,
                     Descuento.mes == mes,
                     Descuento.año == año
                 ).scalar() or Decimal('0')
+                print(f"➖ Descuentos manuales: ₲{descuentos:,.2f}")
+                
+                # 🆕 CRÍTICO: Calcular anticipos aprobados del mes que no se han aplicado
+                anticipos_mes = db.session.query(func.sum(Anticipo.monto)).filter(
+                    Anticipo.empleado_id == empleado.id,
+                    func.extract('month', Anticipo.fecha_aprobacion) == mes,
+                    func.extract('year', Anticipo.fecha_aprobacion) == año,
+                    Anticipo.aprobado == True,
+                    Anticipo.aplicado == False
+                ).scalar() or Decimal('0')
+                print(f"➖ Anticipos del mes: ₲{anticipos_mes:,.2f}")
+                
+                # Sumar descuentos totales
+                descuentos_totales = descuentos + anticipos_mes
+                print(f"➖ TOTAL DESCUENTOS: ₲{descuentos_totales:,.2f}")
                 
                 # Calcular bonificación familiar
                 fecha_liquidacion = date(año, mes, 1)
                 bonificacion_familiar = calcular_bonificacion_familiar(empleado.id, fecha_liquidacion)
+                print(f"👨‍👩‍👧 Bonificación familiar: ₲{bonificacion_familiar:,.2f}")
                 
                 # Calcular aporte IPS (9.625% sobre salario ajustado + ingresos extras + bonificación)
                 aporte_ips = (salario_base_ajustado + ingresos_extras + bonificacion_familiar) * Decimal('0.09625')
+                print(f"🏦 Aporte IPS (9.625%): ₲{aporte_ips:,.2f}")
                 
-                # Calcular salario neto
-                salario_neto = salario_base_ajustado + ingresos_extras + bonificacion_familiar - descuentos - aporte_ips
+                # Calcular salario neto (USAR descuentos_totales)
+                salario_neto = salario_base_ajustado + ingresos_extras + bonificacion_familiar - descuentos_totales - aporte_ips
+                print(f"{'='*60}")
+                print(f"💵 SALARIO NETO: ₲{salario_neto:,.2f}")
+                print(f"{'='*60}\n")
                 
-                # Crear liquidación
+                # Crear liquidación (USAR descuentos_totales)
                 liquidacion = Liquidacion(
                     empleado_id=empleado.id,
                     periodo=periodo,
                     salario_base=salario_base_ajustado,  # Salario ajustado a días trabajados
                     ingresos_extras=ingresos_extras,
                     bonificacion_familiar=bonificacion_familiar,
-                    descuentos=descuentos,
+                    descuentos=descuentos_totales,  # ← CRÍTICO: Incluye anticipos
                     aporte_ips=aporte_ips,
                     salario_neto=salario_neto,
                     dias_trabajados=dias_presentes
@@ -2006,6 +2267,19 @@ def generar_liquidacion():
                 for he in horas_a_aplicar:
                     he.aplicado = True
                     he.fecha_aplicacion = datetime.utcnow()
+                
+                # 🆕 CRÍTICO: Marcar anticipos como aplicados
+                anticipos_a_aplicar = Anticipo.query.filter(
+                    Anticipo.empleado_id == empleado.id,
+                    func.extract('month', Anticipo.fecha_aprobacion) == mes,
+                    func.extract('year', Anticipo.fecha_aprobacion) == año,
+                    Anticipo.aprobado == True,
+                    Anticipo.aplicado == False
+                ).all()
+                for anticipo in anticipos_a_aplicar:
+                    anticipo.aplicado = True
+                    anticipo.fecha_aplicacion = date(año, mes, 1)
+                    print(f"✅ Anticipo ID {anticipo.id} marcado como aplicado")
 
                 contador += 1
             
@@ -3333,8 +3607,37 @@ def perfil_empleado(empleado_id):
     registrar_bitacora(current_user, 'empleados', 'VIEW', 'empleados', empleado_id, 'ver_perfil')
     # Si el empleado está Inactivo, habilitar modo solo-lectura en la vista
     read_only = (empleado.estado == EstadoEmpleadoEnum.INACTIVO)
+    
+    # 📊 Calcular estadísticas de justificaciones del año actual
+    año_actual = date.today().year
+    ausencias_justificadas = db.session.query(func.count(Asistencia.id)).filter(
+        Asistencia.empleado_id == empleado_id,
+        func.extract('year', Asistencia.fecha) == año_actual,
+        Asistencia.presente == False,
+        Asistencia.justificacion_estado == 'JUSTIFICADO'
+    ).scalar() or 0
+    
+    ausencias_injustificadas = db.session.query(func.count(Asistencia.id)).filter(
+        Asistencia.empleado_id == empleado_id,
+        func.extract('year', Asistencia.fecha) == año_actual,
+        Asistencia.presente == False,
+        Asistencia.justificacion_estado == 'INJUSTIFICADO'
+    ).scalar() or 0
+    
+    ausencias_pendientes = db.session.query(func.count(Asistencia.id)).filter(
+        Asistencia.empleado_id == empleado_id,
+        func.extract('year', Asistencia.fecha) == año_actual,
+        Asistencia.presente == False,
+        Asistencia.justificacion_estado == 'PENDIENTE'
+    ).scalar() or 0
 
-    return render_template('rrhh/empleado_perfil.html', empleado=empleado, read_only=read_only)
+    return render_template('rrhh/empleado_perfil.html', 
+                         empleado=empleado, 
+                         read_only=read_only,
+                         ausencias_justificadas=ausencias_justificadas,
+                         ausencias_injustificadas=ausencias_injustificadas,
+                         ausencias_pendientes=ausencias_pendientes,
+                         date=date)
 
 @rrhh_bp.route('/api/empleados/<int:empleado_id>/general', methods=['GET'])
 @login_required
@@ -3470,6 +3773,55 @@ def api_empleado_vacaciones(empleado_id):
     return jsonify({
         'items': datos,
         'total': len(datos)
+    })
+
+@rrhh_bp.route('/api/empleados/<int:empleado_id>/justificaciones', methods=['GET'])
+@login_required
+@role_required(RoleEnum.RRHH)
+def api_empleado_justificaciones(empleado_id):
+    """API: Historial de ausencias con justificaciones"""
+    empleado = Empleado.query.get_or_404(empleado_id)
+    
+    mes = request.args.get('mes', type=int)
+    año = request.args.get('year', date.today().year, type=int)
+    pagina = request.args.get('page', 1, type=int)
+    por_pagina = request.args.get('per_page', 20, type=int)
+    
+    query = Asistencia.query.filter(
+        Asistencia.empleado_id == empleado_id,
+        Asistencia.presente == False
+    ).order_by(desc(Asistencia.fecha))
+    
+    if mes:
+        query = query.filter(func.extract('month', Asistencia.fecha) == mes)
+    if año:
+        query = query.filter(func.extract('year', Asistencia.fecha) == año)
+    
+    paginated = query.paginate(page=pagina, per_page=por_pagina)
+    
+    ausencias = []
+    for a in paginated.items:
+        justificador = None
+        if a.justificacion_por:
+            user = Usuario.query.get(a.justificacion_por)
+            justificador = user.username if user else None
+        
+        ausencias.append({
+            'id': a.id,
+            'fecha': a.fecha.strftime('%d/%m/%Y'),
+            'estado': a.justificacion_estado or 'PENDIENTE',
+            'nota': a.justificacion_nota or '',
+            'justificado_por': justificador,
+            'fecha_justificacion': a.justificacion_fecha.strftime('%d/%m/%Y %H:%M') if a.justificacion_fecha else None,
+            'observaciones': a.observaciones or ''
+        })
+    
+    return jsonify({
+        'items': ausencias,
+        'total': paginated.total,
+        'pages': paginated.pages,
+        'current_page': pagina,
+        'per_page': por_pagina
     })
 
 @rrhh_bp.route('/api/empleados/<int:empleado_id>/permisos', methods=['GET'])

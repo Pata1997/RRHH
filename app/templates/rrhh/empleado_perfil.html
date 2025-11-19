@@ -238,29 +238,110 @@
 
                 <!-- Tab Asistencias -->
                 <div class="tab-pane fade" id="asistencias" role="tabpanel">
-                    <div class="filtros">
-                        <div class="row g-3">
-                            <div class="col-md-4">
-                                <label class="form-label">Mes</label>
-                                <select id="asistencias-mes" class="form-select">
-                                    <option value="">Todos</option>
-                                </select>
+                    <!-- 📊 Resumen de ausencias del año -->
+                    <div class="row mb-4">
+                        <div class="col-md-4">
+                            <div class="kpi-card" style="border-left: 4px solid #28a745;">
+                                <div class="numero text-success">{{ ausencias_justificadas }}</div>
+                                <div class="label">Ausencias Justificadas</div>
                             </div>
-                            <div class="col-md-4">
-                                <label class="form-label">Año</label>
-                                <select id="asistencias-año" class="form-select">
-                                    <option value="">Todos</option>
-                                </select>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="kpi-card" style="border-left: 4px solid #dc3545;">
+                                <div class="numero text-danger">{{ ausencias_injustificadas }}</div>
+                                <div class="label">Ausencias Injustificadas</div>
                             </div>
-                            <div class="col-md-4">
-                                <label class="form-label">&nbsp;</label>
-                                <button class="btn btn-primary w-100" onclick="cargarAsistencias(1)">
-                                    <i class="bi bi-search"></i> Filtrar
-                                </button>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="kpi-card" style="border-left: 4px solid #ffc107;">
+                                <div class="numero text-warning">{{ ausencias_pendientes }}</div>
+                                <div class="label">Ausencias Pendientes</div>
                             </div>
                         </div>
                     </div>
-                    <div id="asistencias-content"></div>
+
+                    <!-- Tabs secundarias: Asistencias y Justificaciones -->
+                    <ul class="nav nav-pills mb-3" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active" id="asistencias-list-tab" data-bs-toggle="tab" data-bs-target="#asistencias-list" type="button" role="tab">
+                                Registro de Asistencias
+                            </button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="justificaciones-tab" data-bs-toggle="tab" data-bs-target="#justificaciones" type="button" role="tab">
+                                Historial de Justificaciones
+                            </button>
+                        </li>
+                    </ul>
+
+                    <div class="tab-content">
+                        <!-- Subtab: Registro de Asistencias -->
+                        <div class="tab-pane fade show active" id="asistencias-list" role="tabpanel">
+                            <div class="filtros">
+                                <div class="row g-3">
+                                    <div class="col-md-4">
+                                        <label class="form-label">Mes</label>
+                                        <select id="asistencias-mes" class="form-select">
+                                            <option value="">Todos</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label">Año</label>
+                                        <select id="asistencias-año" class="form-select">
+                                            <option value="">Todos</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label">&nbsp;</label>
+                                        <button class="btn btn-primary w-100" onclick="cargarAsistencias(1)">
+                                            <i class="bi bi-search"></i> Filtrar
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div id="asistencias-content"></div>
+                        </div>
+
+                        <!-- Subtab: Historial de Justificaciones -->
+                        <div class="tab-pane fade" id="justificaciones" role="tabpanel">
+                            <div class="filtros mb-3">
+                                <div class="row g-3">
+                                    <div class="col-md-4">
+                                        <label class="form-label">Mes</label>
+                                        <select id="justif-mes" class="form-select">
+                                            <option value="">Todos</option>
+                                            <option value="1">Enero</option>
+                                            <option value="2">Febrero</option>
+                                            <option value="3">Marzo</option>
+                                            <option value="4">Abril</option>
+                                            <option value="5">Mayo</option>
+                                            <option value="6">Junio</option>
+                                            <option value="7">Julio</option>
+                                            <option value="8">Agosto</option>
+                                            <option value="9">Septiembre</option>
+                                            <option value="10">Octubre</option>
+                                            <option value="11">Noviembre</option>
+                                            <option value="12">Diciembre</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label">Año</label>
+                                        <select id="justif-año" class="form-select">
+                                            <option value="{{ date.today().year }}">{{ date.today().year }}</option>
+                                            <option value="{{ date.today().year - 1 }}">{{ date.today().year - 1 }}</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label">&nbsp;</label>
+                                        <button class="btn btn-primary w-100" onclick="cargarJustificaciones(1)">
+                                            <i class="bi bi-search"></i> Filtrar
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                            <div id="justificaciones-content"></div>
+                        </div>
+                    </div>
                 </div>
 
                 <!-- Tab Vacaciones -->
@@ -390,6 +471,11 @@
         cargarAsistencias(1);
     });
     
+    // Tab interno de justificaciones
+    document.getElementById('justificaciones-tab') && document.getElementById('justificaciones-tab').addEventListener('shown.bs.tab', function() {
+        cargarJustificaciones(1);
+    });
+    
     document.getElementById('vacaciones-tab').addEventListener('shown.bs.tab', function() {
         cargarVacaciones();
     });
@@ -441,6 +527,66 @@
             })
             .catch(err => {
                 document.getElementById('hijos-preview').innerHTML = '<p class="text-danger">Error al cargar hijos</p>';
+            });
+    }
+
+    // 📊 Función para cargar historial de justificaciones
+    function cargarJustificaciones(pagina) {
+        const mes = document.getElementById('justif-mes').value;
+        const año = document.getElementById('justif-año').value;
+        
+        let url = `/rrhh/api/empleados/${empleadoId}/justificaciones?page=${pagina}&year=${año}`;
+        if (mes) url += `&mes=${mes}`;
+        
+        fetch(url)
+            .then(r => r.json())
+            .then(data => {
+                let html = '<div class="table-responsive"><table class="table table-sm table-hover">';
+                html += '<thead class="table-light"><tr>';
+                html += '<th>Fecha</th><th>Estado</th><th>Nota</th><th>Justificado Por</th><th>Fecha Justificación</th>';
+                html += '</tr></thead><tbody>';
+                
+                if (data.items.length === 0) {
+                    html += '<tr><td colspan="5" class="text-center text-muted">No hay ausencias registradas</td></tr>';
+                } else {
+                    data.items.forEach(a => {
+                        let estadoBadge = '';
+                        if (a.estado === 'JUSTIFICADO') {
+                            estadoBadge = '<span class="badge bg-success">Justificada</span>';
+                        } else if (a.estado === 'INJUSTIFICADO') {
+                            estadoBadge = '<span class="badge bg-danger">Injustificada</span>';
+                        } else {
+                            estadoBadge = '<span class="badge bg-warning">Pendiente</span>';
+                        }
+                        
+                        html += `<tr>
+                            <td>${a.fecha}</td>
+                            <td>${estadoBadge}</td>
+                            <td>${a.nota || '<span class="text-muted">-</span>'}</td>
+                            <td>${a.justificado_por || '<span class="text-muted">-</span>'}</td>
+                            <td>${a.fecha_justificacion || '<span class="text-muted">-</span>'}</td>
+                        </tr>`;
+                    });
+                }
+                
+                html += '</tbody></table></div>';
+                
+                // Paginación
+                if (data.pages > 1) {
+                    html += '<nav><ul class="pagination pagination-sm justify-content-center">';
+                    for (let i = 1; i <= data.pages; i++) {
+                        html += `<li class="page-item ${i === data.current_page ? 'active' : ''}">
+                            <a class="page-link" href="#" onclick="cargarJustificaciones(${i}); return false;">${i}</a>
+                        </li>`;
+                    }
+                    html += '</ul></nav>';
+                }
+                
+                document.getElementById('justificaciones-content').innerHTML = html;
+            })
+            .catch(err => {
+                document.getElementById('justificaciones-content').innerHTML = 
+                    '<div class="alert alert-danger">Error al cargar justificaciones</div>';
             });
     }
 </script>
