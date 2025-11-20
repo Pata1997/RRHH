@@ -41,7 +41,6 @@
                         </ul>
                     </li>
                     
-                    {% if current_user.rol.name == 'RRHH' %}
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
                             <i class="bi bi-briefcase"></i> Empleados
@@ -116,13 +115,12 @@
                             <i class="bi bi-journal-text"></i> Bitácora
                         </a>
                     </li>
-                    {% else %}
+                    
                     <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('rrhh.ver_asistencia') }}">
-                            <i class="bi bi-clock"></i> Asistencia
+                        <a class="nav-link" href="{{ url_for('admin.listar_usuarios') }}">
+                            <i class="bi bi-shield-lock-fill"></i> Usuarios
                         </a>
                     </li>
-                    {% endif %}
                     
                     <li class="nav-item dropdown">
                         <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">

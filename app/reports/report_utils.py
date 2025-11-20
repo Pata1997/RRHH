@@ -8,6 +8,19 @@ from datetime import datetime
 import io
 from decimal import Decimal
 
+def formato_guaranies(valor):
+    """Formatea números con separador de miles para guaraníes paraguayos
+    Ejemplos: 1000 -> 1.000 | 1000000 -> 1.000.000
+    """
+    try:
+        if valor is None:
+            return '0'
+        numero = float(valor)
+        # Formatear con separador de miles usando punto
+        return '{:,.0f}'.format(numero).replace(',', '.')
+    except (ValueError, TypeError):
+        return str(valor)
+
 class ReportUtils:
     """Utilidades para generar reportes PDF con ReportLab"""
     
@@ -68,20 +81,42 @@ class ReportUtils:
         # Detalles de liquidación
         bonif_familiar = liquidacion.bonificacion_familiar or Decimal('0')
         subtotal_ingresos = liquidacion.salario_base + liquidacion.ingresos_extras + bonif_familiar
+        total_descuentos = liquidacion.descuentos + liquidacion.aporte_ips
         
         detail_data = [
             ['CONCEPTO', 'VALOR'],
-            ['Salario Base', f"₲ {float(liquidacion.salario_base):,.2f}"],
-            ['Ingresos Extras', f"₲ {float(liquidacion.ingresos_extras):,.2f}"],
-            ['Bonificación Familiar', f"₲ {float(bonif_familiar):,.2f}"],
-            ['Subtotal Ingresos', f"₲ {float(subtotal_ingresos):,.2f}"],
+            ['Salario Base', f"₲ {formato_guaranies(liquidacion.salario_base)}"],
+            ['Ingresos Extras', f"₲ {formato_guaranies(liquidacion.ingresos_extras)}"],
+            ['Bonificación Familiar', f"₲ {formato_guaranies(bonif_familiar)}"],
+            ['Subtotal Ingresos', f"₲ {formato_guaranies(subtotal_ingresos)}"],
             ['', ''],
-            ['Descuentos', f"₲ {float(liquidacion.descuentos):,.2f}"],
-            ['Aporte IPS (9.625%)', f"₲ {float(liquidacion.aporte_ips):,.2f}"],
-            ['Total Descuentos', f"₲ {float(liquidacion.descuentos + liquidacion.aporte_ips):,.2f}"],
-            ['', ''],
-            ['SALARIO NETO', f"₲ {float(liquidacion.salario_neto):,.2f}"],
         ]
+        
+        # Agregar desglose de descuentos si existen
+        descuento_ausencias = liquidacion.descuento_ausencias or Decimal('0')
+        descuento_anticipos = liquidacion.descuento_anticipos or Decimal('0')
+        descuento_sanciones = liquidacion.descuento_sanciones or Decimal('0')
+        descuento_otros = liquidacion.descuento_otros or Decimal('0')
+        
+        if descuento_ausencias > 0:
+            detail_data.append(['  - Descuento por Ausencias', f"₲ {formato_guaranies(descuento_ausencias)}"])
+        if descuento_anticipos > 0:
+            detail_data.append(['  - Descuento por Anticipos', f"₲ {formato_guaranies(descuento_anticipos)}"])
+        if descuento_sanciones > 0:
+            detail_data.append(['  - Descuento por Sanciones', f"₲ {formato_guaranies(descuento_sanciones)}"])
+        if descuento_otros > 0:
+            detail_data.append(['  - Otros Descuentos', f"₲ {formato_guaranies(descuento_otros)}"])
+        
+        # Si hubo descuentos, mostrar el total
+        if liquidacion.descuentos > 0:
+            detail_data.append(['Total Descuentos', f"₲ {formato_guaranies(liquidacion.descuentos)}"])
+        
+        detail_data.extend([
+            ['Aporte IPS (9.625%)', f"₲ {formato_guaranies(liquidacion.aporte_ips)}"],
+            ['Total a Descontar', f"₲ {formato_guaranies(total_descuentos)}"],
+            ['', ''],
+            ['SALARIO NETO', f"₲ {formato_guaranies(liquidacion.salario_neto)}"],
+        ])
         
         detail_table = Table(detail_data, colWidths=[4*inch, 2*inch])
         detail_table.setStyle(TableStyle([

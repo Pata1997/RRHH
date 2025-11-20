@@ -23,7 +23,7 @@
                 <div class="col-md-6">
                     <p><strong>Salario Base:</strong> 
                         <span class="badge bg-success">
-                            {{ "%.2f"|format(empleado.salario_base) }} Gs.
+                            {{ empleado.salario_base|gs }} Gs.
                         </span>
                     </p>
                     <p><strong>Fecha Contratación:</strong> {{ empleado.fecha_ingreso.strftime('%d/%m/%Y') }}</p>
@@ -95,7 +95,7 @@
                                 </small>
                             </td>
                             <td class="text-end">
-                                <strong>{{ "%.2f"|format(liquidacion.indemnizacion_monto) }} Gs.</strong>
+                                <strong>{{ liquidacion.indemnizacion_monto|gs }} Gs.</strong>
                             </td>
                         </tr>
                         <tr>
@@ -105,7 +105,7 @@
                                 <small class="text-muted">(Proporción del año trabajado)</small>
                             </td>
                             <td class="text-end">
-                                <strong>{{ "%.2f"|format(liquidacion.aguinaldo_monto) }} Gs.</strong>
+                                <strong>{{ liquidacion.aguinaldo_monto|gs }} Gs.</strong>
                             </td>
                         </tr>
                         <tr>
@@ -115,7 +115,7 @@
                                 <small class="text-muted">(Días acumulados × salario/30)</small>
                             </td>
                             <td class="text-end">
-                                <strong>{{ "%.2f"|format(liquidacion.vacaciones_monto) }} Gs.</strong>
+                                <strong>{{ liquidacion.vacaciones_monto|gs }} Gs.</strong>
                             </td>
                         </tr>
                         <tr class="table-active" style="background-color: #f0f0f0;">

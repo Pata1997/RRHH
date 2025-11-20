@@ -154,7 +154,7 @@
                                     <tr>
                                         <td>{{ item.empleado.nombre_completo }}</td>
                                         <td><small>{{ item.empleado.cargo.nombre }}</small></td>
-                                        <td class="text-end">{{ "%.0f"|format(item.empleado.salario_base) }}</td>
+                                        <td class="text-end">{{ item.empleado.salario_base|gs }}</td>
                                         <td class="text-end">
                                             {% if item.total_devengado > 0 %}
                                                 <span class="badge bg-success">{{ "%.0f"|format(item.total_devengado) }}</span>

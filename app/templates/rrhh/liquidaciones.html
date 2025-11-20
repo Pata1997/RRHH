@@ -39,12 +39,12 @@
                     <tr>
                         <td><strong>{{ liquidacion.empleado.nombre_completo }}</strong></td>
                         <td>{{ liquidacion.periodo }}</td>
-                        <td>₲ {{ "%.2f"|format(liquidacion.salario_base) }}</td>
+                        <td>₲ {{ liquidacion.salario_base|gs }}</td>
                         <td>₲ {{ "%.2f"|format(liquidacion.ingresos_extras) }}</td>
                         <td>₲ {{ "%.2f"|format(liquidacion.bonificacion_familiar or 0) }}</td>
                         <td>₲ {{ "%.2f"|format(liquidacion.descuentos) }}</td>
                         <td>₲ {{ "%.2f"|format(liquidacion.aporte_ips) }}</td>
-                        <td><strong>₲ {{ "%.2f"|format(liquidacion.salario_neto) }}</strong></td>
+                        <td><strong>₲ {{ liquidacion.salario_neto|gs }}</strong></td>
                         <td>
                             <a href="{{ url_for('rrhh.descargar_recibo_pdf', liquidacion_id=liquidacion.id) }}" class="btn btn-sm btn-danger">
                                 <i class="bi bi-file-pdf"></i> PDF

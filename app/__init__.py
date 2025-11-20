@@ -45,14 +45,32 @@ def create_app(config_name=None):
     # Crear directorio de uploads
     os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
     
+    # Registrar filtro personalizado para formato de guaraníes
+    @app.template_filter('gs')
+    def formato_guaranies(valor):
+        """Formatea números con separador de miles (punto) para guaraníes
+        Ejemplos: 1000 -> 1.000 | 1000000 -> 1.000.000
+        """
+        try:
+            if valor is None:
+                return '0'
+            # Convertir a float y formatear
+            numero = float(valor)
+            # Formatear con comas y luego reemplazar por puntos
+            return '{:,.0f}'.format(numero).replace(',', '.')
+        except (ValueError, TypeError):
+            return str(valor)
+    
     # Registrar blueprints
     from .routes.auth import auth_bp
     from .routes.rrhh import rrhh_bp
     from .routes.main import main_bp
+    from .routes.admin import admin_bp
     
     app.register_blueprint(auth_bp)
     app.register_blueprint(rrhh_bp)
     app.register_blueprint(main_bp)
+    app.register_blueprint(admin_bp)
     
     # Configurar APScheduler para cierre automático de asistencias
     if not app.debug or os.environ.get('WERKZEUG_RUN_MAIN') == 'true':

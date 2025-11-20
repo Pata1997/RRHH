@@ -103,10 +103,10 @@
                                     <td><strong>{{ item.empleado.nombre_completo }}</strong></td>
                                     <td><small>{{ item.empleado.ci }}</small></td>
                                     <td>{{ item.empleado.cargo.nombre }}</td>
-                                    <td class="text-end">{{ "%.0f"|format(item.salario_base) }}</td>
-                                    <td class="text-end"><span class="badge bg-success">{{ "%.0f"|format(item.aguinaldo_monto) }}</span></td>
+                                    <td class="text-end">{{ item.salario_base|gs }}</td>
+                                    <td class="text-end"><span class="badge bg-success">{{ item.aguinaldo_monto|gs }}</span></td>
                                     <td class="text-end text-warning">{{ "%.0f"|format(item.aportes_ips_despido) }}</td>
-                                    <td class="text-end"><strong class="text-info">{{ "%.0f"|format(item.salario_neto) }}</strong></td>
+                                    <td class="text-end"><strong class="text-info">{{ item.salario_neto|gs }}</strong></td>
                                     <td><span class="badge bg-secondary">{{ item.periodo }}</span></td>
                                     <td class="text-center">
                                         <a href="{{ url_for('rrhh.descargar_recibo_pdf', liquidacion_id=item.id) }}" 

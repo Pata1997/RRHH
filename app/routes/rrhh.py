@@ -836,77 +836,140 @@ def _parse_time(cfg_key, default='08:30'):
 
 
 def _resumir_dia_asistencias(empleado_id, dia_date):
-    """Resumir los eventos del día y devolver dict con hora_entrada, hora_salida, presente, observaciones"""
+    """Resumir los eventos del día y devolver dict con hora_entrada, hora_salida, presente, observaciones
+    Nivel 2: Observaciones Detalladas con información completa
+    """
     eventos = AsistenciaEvento.query.filter(
         AsistenciaEvento.empleado_id == empleado_id,
         func.date(AsistenciaEvento.ts) == dia_date
     ).order_by(AsistenciaEvento.ts).all()
 
-    on_time = _parse_time('ASISTENCIA_ON_TIME', '08:30')
-    tolerancia = _parse_time('ASISTENCIA_TOLERANCE', '08:50')
-    corte_manana = _parse_time('ASISTENCIA_CORTE_MANANA', '12:00')
-    inicio_tarde = _parse_time('ASISTENCIA_INICIO_TARDE', '13:30')
-    salida_final = _parse_time('ASISTENCIA_SALIDA_FINAL', '16:00')
+    if not eventos:
+        return {
+            'hora_entrada': None,
+            'hora_salida': None,
+            'presente': False,
+            'observaciones': 'Ausencia injustificada - Sin marcaciones'
+        }
 
+    hora_esperada = datetime.strptime('08:00', '%H:%M').time()
+    
     primera_entrada = None
     ultima_salida = None
-    observaciones = []
+    lunch_out = None
+    lunch_in = None
 
-    # Encontrar primera entrada y última salida
+    # Encontrar todos los eventos importantes
     for ev in eventos:
         if ev.tipo == 'in' and primera_entrada is None:
             primera_entrada = ev.ts
         if ev.tipo == 'out':
             ultima_salida = ev.ts
-
-    # Clasificar llegada
-    if primera_entrada:
-        t = primera_entrada.time()
-        if t <= on_time:
-            observaciones.append('A tiempo')
-        elif t <= tolerancia:
-            observaciones.append('Tolerancia')
-        elif t < corte_manana:
-            observaciones.append('Llegada tardía')
-        else:
-            # Entrada después del corte de mañana -> considerarla llegada tarde o sólo tarde
-            if t >= inicio_tarde:
-                observaciones.append('Solo tarde')
-            else:
-                observaciones.append('Llegada tardía')
-    else:
-        # No hay entrada por la mañana
-        # Si existe entrada por la tarde, marcar solo tarde
-        entrada_tarde = next((ev for ev in eventos if ev.tipo == 'in' and ev.ts.time() >= inicio_tarde), None)
-        if entrada_tarde:
-            observaciones.append('Ausente mañana; Solo tarde')
-            primera_entrada = entrada_tarde.ts if hasattr(entrada_tarde, 'ts') else entrada_tarde.ts
-        else:
-            observaciones.append('Ausencia')
-
-    # Detectar salida al almuerzo (primer out cercano a medio día)
-    lunch_out = next((ev for ev in eventos if ev.tipo == 'out' and ev.ts.time() >= (datetime.strptime('11:30','%H:%M').time()) and ev.ts.time() <= (datetime.strptime('13:30','%H:%M').time())), None)
+            # Detectar salida al almuerzo (OUT entre 11:30 y 13:30)
+            if lunch_out is None and ev.ts.time() >= datetime.strptime('11:30','%H:%M').time() and ev.ts.time() <= datetime.strptime('13:30','%H:%M').time():
+                lunch_out = ev.ts
+    
+    # Buscar entrada después del almuerzo
     if lunch_out:
-        observaciones.append('Salida al almuerzo')
-        # buscar entrada después del almuerzo
-        lunch_in = next((ev for ev in eventos if ev.tipo == 'in' and ev.ts > lunch_out.ts), None)
-        if lunch_in:
-            observaciones.append('Entrada del almuerzo')
+        for ev in eventos:
+            if ev.tipo == 'in' and ev.ts > lunch_out:
+                lunch_in = ev.ts
+                break
 
-    # Clasificar salida final
-    if ultima_salida:
-        if ultima_salida.time() >= salida_final:
-            observaciones.append('Salida final')
+    # Construir observación detallada
+    observacion = ""
+    
+    # Caso 1: Solo marcó entrada, nunca salió
+    if primera_entrada and not ultima_salida:
+        return {
+            'hora_entrada': primera_entrada.time().strftime('%H:%M:%S'),
+            'hora_salida': None,
+            'presente': True,
+            'observaciones': 'Solo marcó entrada - Sin salida registrada'
+        }
+    
+    # Caso 2: Solo marcó salida (extraño)
+    if not primera_entrada and ultima_salida:
+        return {
+            'hora_entrada': None,
+            'hora_salida': ultima_salida.time().strftime('%H:%M:%S'),
+            'presente': False,
+            'observaciones': 'Solo marcó salida - Sin entrada registrada'
+        }
+    
+    # Calcular tardanza si llegó tarde
+    tardanza_minutos = 0
+    if primera_entrada:
+        entrada_time = primera_entrada.time()
+        if entrada_time > hora_esperada:
+            # Calcular minutos de tardanza
+            entrada_dt = datetime.combine(dia_date, entrada_time)
+            esperada_dt = datetime.combine(dia_date, hora_esperada)
+            tardanza_minutos = int((entrada_dt - esperada_dt).total_seconds() / 60)
+    
+    # Determinar tipo de asistencia
+    entrada_time = primera_entrada.time()
+    salida_time = ultima_salida.time()
+    
+    # Verificar si solo vino a la mañana (salió antes de las 13:30 y no volvió)
+    if salida_time < datetime.strptime('13:30','%H:%M').time() and not lunch_in:
+        if tardanza_minutos > 0:
+            observacion = f"Llegada tarde {tardanza_minutos} min - Solo turno mañana - No regresó"
         else:
-            observaciones.append('Salida temprana')
+            observacion = "Solo turno mañana - No regresó del almuerzo"
+    
+    # Verificar si solo vino a la tarde (entró después de 13:00)
+    elif entrada_time >= datetime.strptime('13:00','%H:%M').time():
+        horas_tarde = int((datetime.combine(dia_date, salida_time) - datetime.combine(dia_date, entrada_time)).total_seconds() / 3600)
+        observacion = f"Solo turno tarde ({horas_tarde}h)"
+    
+    # Verificar salida anticipada (salió antes de las 16:00 pero sí almorzó)
+    elif salida_time < datetime.strptime('16:00','%H:%M').time() and lunch_out and lunch_in:
+        if tardanza_minutos > 0:
+            observacion = f"Llegada tarde {tardanza_minutos} min - Salida anticipada {salida_time.strftime('%H:%M')}"
+        else:
+            observacion = f"Salida anticipada {salida_time.strftime('%H:%M')}"
+    
+    # Día completo con información de almuerzo
+    else:
+        if lunch_out and lunch_in:
+            # Calcular duración del almuerzo
+            duracion_almuerzo = int((lunch_in - lunch_out).total_seconds() / 60)
+            if duracion_almuerzo <= 60:
+                almuerzo_str = f"Almuerzo {duracion_almuerzo}min"
+            else:
+                horas = duracion_almuerzo // 60
+                minutos = duracion_almuerzo % 60
+                if minutos > 0:
+                    almuerzo_str = f"Almuerzo {horas}h {minutos}min"
+                else:
+                    almuerzo_str = f"Almuerzo {horas}h"
+            
+            if tardanza_minutos > 0:
+                observacion = f"Llegada tarde {tardanza_minutos} min - Día completo - {almuerzo_str}"
+            else:
+                observacion = f"Día completo (8h) - {almuerzo_str}"
+        else:
+            # Día completo sin registro de almuerzo
+            if tardanza_minutos > 0:
+                if tardanza_minutos >= 60:
+                    horas = tardanza_minutos // 60
+                    mins = tardanza_minutos % 60
+                    if mins > 0:
+                        observacion = f"Llegada tarde {horas}h {mins}min - Día completo"
+                    else:
+                        observacion = f"Llegada tarde {horas}h - Día completo"
+                else:
+                    observacion = f"Llegada tarde {tardanza_minutos} min - Día completo"
+            else:
+                observacion = "Día completo - Sin registro de almuerzo"
 
-    resumen = {
+    return {
         'hora_entrada': primera_entrada.time().strftime('%H:%M:%S') if primera_entrada else None,
         'hora_salida': ultima_salida.time().strftime('%H:%M:%S') if ultima_salida else None,
-        'presente': True if eventos else False,
-        'observaciones': '; '.join(observaciones) if observaciones else None
+        'presente': True,
+        'observaciones': observacion
     }
-    return resumen
 
 
 def cerrar_asistencias_automatico(fecha_cierre=None):
@@ -2149,7 +2212,17 @@ def generar_liquidacion():
                         dias_habiles_teoricos += 1
                     fecha_actual += timedelta(days=1)
                 
-                dias_ausentes = dias_habiles_teoricos - dias_presentes
+                # ========================================
+                # CALCULAR AUSENCIAS REALES
+                # NUEVO ENFOQUE: presente=True incluye presentes, vacaciones, permisos con goce
+                # Solo descontamos días marcados como presente=False
+                # ========================================
+                dias_ausentes_sin_justificar = dias_habiles_teoricos - dias_presentes
+                descuento_por_ausencias = Decimal('0')
+                
+                if dias_ausentes_sin_justificar > 0:
+                    salario_diario_temp = empleado.salario_base / Decimal(str(dias_habiles_teoricos))
+                    descuento_por_ausencias = salario_diario_temp * Decimal(str(dias_ausentes_sin_justificar))
                 
                 # ========================================
                 # VALIDACIÓN: Días presentes no puede superar días hábiles
@@ -2159,16 +2232,24 @@ def generar_liquidacion():
                     flash(f'Advertencia: {empleado.nombre_completo} tiene inconsistencia en asistencias ({dias_presentes} > {dias_habiles_teoricos})', 'warning')
                 
                 # ========================================
-                # CALCULAR SALARIO PROPORCIONAL
+                # CALCULAR SALARIO BASE (COMPLETO - vacaciones no se descuentan)
                 # ========================================
                 print(f"\n{'='*60}")
                 print(f"📊 LIQUIDACIÓN: {empleado.codigo} - {empleado.nombre_completo}")
                 print(f"{'='*60}")
-                salario_diario = empleado.salario_base / Decimal(30)
-                salario_base_ajustado = salario_diario * Decimal(str(dias_presentes))
-                print(f"💰 Salario base: ₲{empleado.salario_base:,.2f}")
-                print(f"📅 Días presentes: {dias_presentes}/{dias_habiles_teoricos}")
-                print(f"💵 Salario proporcional: ₲{salario_base_ajustado:,.2f}")
+                
+                salario_diario = empleado.salario_base / Decimal(str(dias_habiles_teoricos))
+                
+                print(f"💰 Salario base mensual: ₲{empleado.salario_base:,.2f}")
+                print(f"📅 Días hábiles del mes: {dias_habiles_teoricos}")
+                print(f"✅ Días presentes (incluye vacaciones y permisos): {dias_presentes}")
+                print(f"❌ Ausencias sin justificar: {dias_ausentes_sin_justificar}")
+                print(f"💵 Salario diario: ₲{salario_diario:,.2f}")
+                if descuento_por_ausencias > 0:
+                    print(f"➖ Descuento por ausencias: ₲{descuento_por_ausencias:,.2f}")
+                
+                # Salario base = salario completo (no se ajusta por ausencias aquí)
+                salario_base_ajustado = empleado.salario_base
                 
                 # Calcular ingresos extras: incluir solo ingresos manuales APROBADOS y horas extra APROBADAS
                 ingresos_extras = db.session.query(func.coalesce(func.sum(IngresoExtra.monto), 0)).filter(
@@ -2193,12 +2274,12 @@ def generar_liquidacion():
                 print(f"➕ Ingresos extras: ₲{ingresos_extras:,.2f}")
                 
                 # Calcular descuentos manuales
-                descuentos = db.session.query(func.sum(Descuento.monto)).filter(
+                descuentos_manuales = db.session.query(func.sum(Descuento.monto)).filter(
                     Descuento.empleado_id == empleado.id,
                     Descuento.mes == mes,
                     Descuento.año == año
                 ).scalar() or Decimal('0')
-                print(f"➖ Descuentos manuales: ₲{descuentos:,.2f}")
+                print(f"➖ Descuentos manuales: ₲{descuentos_manuales:,.2f}")
                 
                 # 🆕 CRÍTICO: Calcular anticipos aprobados del mes que no se han aplicado
                 anticipos_mes = db.session.query(func.sum(Anticipo.monto)).filter(
@@ -2210,8 +2291,16 @@ def generar_liquidacion():
                 ).scalar() or Decimal('0')
                 print(f"➖ Anticipos del mes: ₲{anticipos_mes:,.2f}")
                 
-                # Sumar descuentos totales
-                descuentos_totales = descuentos + anticipos_mes
+                # 🆕 Calcular sanciones con monto del mes
+                sanciones_mes = db.session.query(func.sum(Sancion.monto)).filter(
+                    Sancion.empleado_id == empleado.id,
+                    func.extract('month', Sancion.fecha) == mes,
+                    func.extract('year', Sancion.fecha) == año
+                ).scalar() or Decimal('0')
+                print(f"➖ Sanciones del mes: ₲{sanciones_mes:,.2f}")
+                
+                # Sumar TODOS los descuentos (incluye ausencias)
+                descuentos_totales = descuentos_manuales + anticipos_mes + sanciones_mes + descuento_por_ausencias
                 print(f"➖ TOTAL DESCUENTOS: ₲{descuentos_totales:,.2f}")
                 
                 # Calcular bonificación familiar
@@ -2239,7 +2328,12 @@ def generar_liquidacion():
                     descuentos=descuentos_totales,  # ← CRÍTICO: Incluye anticipos
                     aporte_ips=aporte_ips,
                     salario_neto=salario_neto,
-                    dias_trabajados=dias_presentes
+                    dias_trabajados=dias_presentes,
+                    # Desglose de descuentos
+                    descuento_ausencias=descuento_por_ausencias,
+                    descuento_anticipos=anticipos_mes,
+                    descuento_sanciones=sanciones_mes,
+                    descuento_otros=descuentos_manuales
                 )
                 
                 db.session.add(liquidacion)
@@ -4703,25 +4797,37 @@ def crear_salario_minimo():
 @role_required(RoleEnum.RRHH)
 def listar_hijos(empleado_id):
     """Lista hijos de un empleado para bonificación familiar"""
-    empleado = Empleado.query.get_or_404(empleado_id)
-    registrar_bitacora(current_user, 'bonificacion_familiar', 'VIEW', 'bonificaciones_familiares')
-    
-    hijos = BonificacionFamiliar.query.filter_by(empleado_id=empleado_id).order_by(
-        desc(BonificacionFamiliar.activo),
-        BonificacionFamiliar.hijo_fecha_nacimiento
-    ).all()
-    
-    # Calcular bonificación actual
-    bonificacion_actual = calcular_bonificacion_familiar(empleado_id)
-    salario_minimo = obtener_salario_minimo_vigente()
-    hijos_activos_count = contar_hijos_activos(empleado_id)
-    
-    return render_template('rrhh/hijos_listado.html',
-                          empleado=empleado,
-                          hijos=hijos,
-                          bonificacion_actual=bonificacion_actual,
-                          salario_minimo=salario_minimo,
-                          hijos_activos=hijos_activos_count)
+    try:
+        empleado = Empleado.query.get_or_404(empleado_id)
+        registrar_bitacora(current_user, 'bonificacion_familiar', 'VIEW', 'bonificaciones_familiares')
+        
+        hijos = BonificacionFamiliar.query.filter_by(empleado_id=empleado_id).order_by(
+            desc(BonificacionFamiliar.activo),
+            BonificacionFamiliar.hijo_fecha_nacimiento
+        ).all()
+        
+        # Calcular bonificación actual
+        bonificacion_actual = calcular_bonificacion_familiar(empleado_id)
+        salario_minimo = obtener_salario_minimo_vigente()
+        hijos_activos_count = contar_hijos_activos(empleado_id)
+        
+        return render_template('rrhh/hijos_listado.html',
+                              empleado=empleado,
+                              hijos=hijos,
+                              bonificacion_actual=bonificacion_actual,
+                              salario_minimo=salario_minimo,
+                              hijos_activos=hijos_activos_count)
+    except Exception as e:
+        print(f"Error en listar_hijos: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        flash(f'Error al cargar información de hijos: {str(e)}', 'danger')
+        return render_template('rrhh/hijos_listado.html',
+                              empleado=empleado,
+                              hijos=[],
+                              bonificacion_actual=Decimal('0'),
+                              salario_minimo=Decimal('2798309'),
+                              hijos_activos=0)
 
 @rrhh_bp.route('/empleado/<int:empleado_id>/hijos/agregar', methods=['GET', 'POST'])
 @login_required

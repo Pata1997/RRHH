@@ -7,6 +7,7 @@ from enum import Enum
 db = SQLAlchemy()
 
 class RoleEnum(Enum):
+    ADMIN = "Administrador"
     RRHH = "RRHH"
     ASISTENTE_RRHH = "Asistente RRHH"
 
@@ -389,6 +390,12 @@ class Liquidacion(db.Model):
     dias_trabajados = db.Column(db.Integer)
     fecha_generacion = db.Column(db.DateTime, default=datetime.utcnow)
     pdf_content = db.Column(db.LargeBinary)
+    
+    # Desglose de descuentos
+    descuento_ausencias = db.Column(db.Numeric(12, 2), default=0)
+    descuento_anticipos = db.Column(db.Numeric(12, 2), default=0)
+    descuento_sanciones = db.Column(db.Numeric(12, 2), default=0)
+    descuento_otros = db.Column(db.Numeric(12, 2), default=0)
     
     # Campos para liquidación por despido
     despido_id = db.Column(db.Integer, db.ForeignKey('despidos.id'), nullable=True)

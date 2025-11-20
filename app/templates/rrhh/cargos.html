@@ -32,7 +32,7 @@
                     <tr>
                         <td><strong>{{ cargo.nombre }}</strong></td>
                         <td>{{ cargo.descripcion or '-' }}</td>
-                        <td>₲ {{ "%.2f"|format(cargo.salario_base) }}</td>
+                        <td>₲ {{ cargo.salario_base|gs }}</td>
                         <td><span class="badge bg-info">{{ cargo.empleados|length }}</span></td>
                         <td>
                             <a href="{{ url_for('rrhh.editar_cargo', cargo_id=cargo.id) }}" class="btn btn-sm btn-warning">

@@ -32,7 +32,7 @@ def init_db():
             nombre_usuario='admin',
             email='admin@cooperativa.com',
             nombre_completo='Administrador del Sistema',
-            rol=RoleEnum.RRHH,
+            rol=RoleEnum.ADMIN,
             activo=True
         )
         admin.set_password('admin123')

@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+
+{% block title %}Editar Usuario{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row">
+        <div class="col-md-8 offset-md-2">
+            <div class="card shadow-sm">
+                <div class="card-header bg-warning">
+                    <h4 class="mb-0"><i class="bi bi-pencil-fill"></i> Editar Usuario: {{ usuario.nombre_usuario }}</h4>
+                </div>
+                <div class="card-body">
+                    <form method="POST" action="{{ url_for('admin.editar_usuario', usuario_id=usuario.id) }}">
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="nombre_usuario" class="form-label">Nombre de Usuario *</label>
+                                <input type="text" 
+                                       class="form-control" 
+                                       id="nombre_usuario" 
+                                       name="nombre_usuario" 
+                                       value="{{ usuario.nombre_usuario }}"
+                                       required 
+                                       pattern="[a-zA-Z0-9_]+"
+                                       title="Solo letras, números y guión bajo">
+                                <small class="text-muted">Solo letras, números y guión bajo</small>
+                            </div>
+
+                            <div class="col-md-6 mb-3">
+                                <label for="email" class="form-label">Email *</label>
+                                <input type="email" 
+                                       class="form-control" 
+                                       id="email" 
+                                       name="email" 
+                                       value="{{ usuario.email }}"
+                                       required>
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="nombre_completo" class="form-label">Nombre Completo *</label>
+                            <input type="text" 
+                                   class="form-control" 
+                                   id="nombre_completo" 
+                                   name="nombre_completo" 
+                                   value="{{ usuario.nombre_completo }}"
+                                   required>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="rol" class="form-label">Rol *</label>
+                            <select class="form-select" id="rol" name="rol" required>
+                                {% for role in roles %}
+                                <option value="{{ role.name }}" {% if usuario.rol == role %}selected{% endif %}>
+                                    {% if role.name == 'ADMIN' %}
+                                        👑 Administrador - Acceso total al sistema
+                                    {% elif role.name == 'RRHH' %}
+                                        👔 RRHH - Gestión completa de recursos humanos
+                                    {% else %}
+                                        📋 Asistente - Consulta y operaciones básicas
+                                    {% endif %}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <div class="mb-3 form-check">
+                            <input type="checkbox" 
+                                   class="form-check-input" 
+                                   id="activo" 
+                                   name="activo" 
+                                   {% if usuario.activo %}checked{% endif %}>
+                            <label class="form-check-label" for="activo">
+                                Usuario activo (puede iniciar sesión)
+                            </label>
+                        </div>
+
+                        <hr class="my-4">
+
+                        <h5 class="mb-3"><i class="bi bi-key-fill"></i> Cambiar Contraseña (Opcional)</h5>
+                        <p class="text-muted">Deja estos campos vacíos si no deseas cambiar la contraseña.</p>
+
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="password" class="form-label">Nueva Contraseña</label>
+                                <input type="password" 
+                                       class="form-control" 
+                                       id="password" 
+                                       name="password" 
+                                       minlength="6"
+                                       placeholder="Mínimo 6 caracteres">
+                                <small class="text-muted">Mínimo 6 caracteres</small>
+                            </div>
+
+                            <div class="col-md-6 mb-3">
+                                <label for="password_confirm" class="form-label">Confirmar Nueva Contraseña</label>
+                                <input type="password" 
+                                       class="form-control" 
+                                       id="password_confirm" 
+                                       name="password_confirm" 
+                                       minlength="6"
+                                       placeholder="Repetir contraseña">
+                            </div>
+                        </div>
+
+                        <div class="alert alert-info">
+                            <i class="bi bi-info-circle-fill"></i>
+                            <strong>Información:</strong>
+                            <ul class="mb-0 mt-2">
+                                <li>Creado el: {{ usuario.fecha_creacion.strftime('%d/%m/%Y %H:%M') }}</li>
+                                {% if usuario.ultimo_login %}
+                                <li>Último login: {{ usuario.ultimo_login.strftime('%d/%m/%Y %H:%M') }}</li>
+                                {% else %}
+                                <li>Nunca ha iniciado sesión</li>
+                                {% endif %}
+                            </ul>
+                        </div>
+
+                        <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                            <a href="{{ url_for('admin.listar_usuarios') }}" class="btn btn-secondary">
+                                <i class="bi bi-x-circle"></i> Cancelar
+                            </a>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="bi bi-save-fill"></i> Guardar Cambios
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Validar que las contraseñas coincidan solo si se ingresó alguna
+document.querySelector('form').addEventListener('submit', function(e) {
+    const password = document.getElementById('password').value;
+    const confirm = document.getElementById('password_confirm').value;
+    
+    // Solo validar si se ingresó alguna contraseña
+    if (password || confirm) {
+        if (password !== confirm) {
+            e.preventDefault();
+            alert('Las contraseñas no coinciden. Por favor, verifica.');
+            document.getElementById('password_confirm').focus();
+        }
+    }
+});
+</script>
+{% endblock %}

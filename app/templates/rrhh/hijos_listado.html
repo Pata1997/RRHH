@@ -33,7 +33,7 @@
             <div class="card text-center bg-light">
                 <div class="card-body">
                     <h6 class="text-muted">Salario Mínimo</h6>
-                    <h4>{{ "%.0f"|format(salario_minimo) }} Gs</h4>
+                    <h4>{{ salario_minimo|gs }} Gs</h4>
                 </div>
             </div>
         </div>
@@ -41,7 +41,7 @@
             <div class="card text-center bg-light">
                 <div class="card-body">
                     <h6 class="text-muted">Por Hijo (5%)</h6>
-                    <h4>{{ "%.0f"|format(salario_minimo|float * 0.05) }} Gs</h4>
+                    <h4>{{ (salario_minimo|float * 0.05)|gs }} Gs</h4>
                 </div>
             </div>
         </div>
