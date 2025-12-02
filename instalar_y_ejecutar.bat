@@ -84,7 +84,12 @@ echo Usuario: asistente
 echo Contraseña: asistente123
 echo Rol: Asistente RRHH
 echo.
-echo ======================================
+echo ======== NUEVAS FUNCIONALIDADES ========
+echo + Sistema de contratacion de postulantes
+echo + Logo empresarial en login/dashboard/PDFs
+echo + Validaciones de duplicados mejoradas
+echo + Membretes profesionales en reportes
+echo ========================================
 echo.
 
 REM Preguntar si ejecutar la aplicación

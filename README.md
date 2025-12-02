@@ -103,19 +103,48 @@ Una aplicación web completa para la gestión de recursos humanos desarrollada c
 - Control de acceso por roles
 - Cambio de contraseña
 
-### 15. **Interfaz Moderna**
+### 15. **Gestión de Postulantes** 🆕 👥
+- Registro de candidatos con datos personales y laborales
+- Estados: Nuevo, En Evaluación, Contratado, Rechazado, En Espera
+- Adjunto de documentos (CV, certificados)
+- **Sistema de contratación inteligente** ✨
+  - Modal interactivo con validaciones en tiempo real
+  - Auto-generación de código de empleado secuencial
+  - Mapeo automático de datos postulante → empleado
+  - Validación de CI, email y código duplicados
+  - Vinculación automática postulante-empleado
+  - Salario auto-completado según cargo
+- Botón rápido de contratación desde lista
+- Historial completo de documentos adjuntos
+
+### 16. **Identidad Corporativa** 🆕 🏢
+- **Logo empresarial en todo el sistema**
+  - Login con logo centrado y branding profesional
+  - Navbar con logo integrado en todas las páginas
+  - Dashboard con header empresarial completo (logo + datos)
+  - Reportes PDF con membrete oficial y logo
+- **Sistema de fallback elegante**
+  - Iniciales con gradiente si no hay logo
+  - Iconos Bootstrap como último recurso
+- **Logos públicos en login** (sin autenticación)
+- Context processor global para empresa en todos los templates
+
+### 17. **Interfaz Moderna**
 - Bootstrap 5 responsivo
 - DataTables para tablas interactivas
 - SweetAlert2 para confirmaciones
 - Alertas flash para retroalimentación
 - Navbar con menús dinámicos
 - **Perfil de empleado con tabs y estadísticas** 🆕
+- Modales interactivos con validaciones JavaScript
 
-### 16. **APIs REST** 🆕
+### 18. **APIs REST** 🆕
 - `/rrhh/liquidaciones/preview/<periodo>` - Pre-visualización de liquidación
 - `/rrhh/anticipos/pendientes` - Anticipos sin aplicar
 - `/rrhh/metricas/asistencias` - Estadísticas de asistencias
 - `/rrhh/api/empleados/<id>/justificaciones` - Historial de justificaciones
+- `/rrhh/postulantes/<id>/contratar` - Contratar postulante como empleado 🆕
+- `/rrhh/uploads/<path>` - Servir archivos (logos públicos, documentos privados)
 
 ## 📁 Estructura del Proyecto
 
@@ -389,4 +418,29 @@ Este proyecto está bajo licencia MIT.
 ---
 
 **Desarrollado para la Cooperativa - 2025**
-**Última actualización: Noviembre 2025**
+**Última actualización: Diciembre 2025**
+
+## ✨ Nuevas Funcionalidades (Diciembre 2025)
+
+### Sistema de Contratación de Postulantes
+- ✅ Modal inteligente con auto-completado
+- ✅ Generación automática de código empleado (EMP-001, EMP-002...)
+- ✅ Validación de duplicados (CI, email, código)
+- ✅ Mapeo postulante → empleado con preservación de datos
+- ✅ Vinculación bidireccional automática
+- ✅ Bitacora completa de contrataciones
+
+### Identidad Corporativa
+- ✅ Logo empresarial en login (sin autenticación)
+- ✅ Logo en navbar de todas las páginas
+- ✅ Header empresarial en dashboard con datos completos
+- ✅ Membrete con logo en todos los PDFs (recibos, planillas)
+- ✅ Fallback elegante con iniciales si no hay logo
+- ✅ Configuración de empresa con upload de logo
+
+### Mejoras UX/UI
+- ✅ Diseño profesional con gradientes y sombras
+- ✅ Validaciones JavaScript en tiempo real
+- ✅ Mensajes descriptivos de error
+- ✅ Responsive design mejorado
+- ✅ Iconos y emojis contextuales
