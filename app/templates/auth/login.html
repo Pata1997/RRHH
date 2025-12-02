@@ -8,6 +8,25 @@
         <div class="col-md-5">
             <div class="card shadow">
                 <div class="card-body p-5">
+                    <!-- Logo de la Empresa -->
+                    <div class="login-logo-container">
+                        {% if empresa_global and empresa_global.logo_path %}
+                            <img src="{{ url_for('rrhh.serve_uploads', subpath=empresa_global.logo_path) }}" alt="{{ empresa_global.nombre }}">
+                        {% elif empresa_global and empresa_global.nombre %}
+                            <div class="login-logo-fallback">
+                                {{ empresa_global.nombre[0:2].upper() }}
+                            </div>
+                        {% else %}
+                            <div class="login-logo-fallback">
+                                <i class="bi bi-building"></i>
+                            </div>
+                        {% endif %}
+                        
+                        {% if empresa_global and empresa_global.nombre %}
+                            <div class="login-empresa-nombre">{{ empresa_global.nombre }}</div>
+                        {% endif %}
+                    </div>
+                    
                     <h1 class="text-center mb-4">
                         <i class="bi bi-person-check"></i> Sistema RRHH
                     </h1>

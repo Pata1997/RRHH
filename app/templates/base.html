@@ -19,7 +19,14 @@
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
         <div class="container-fluid">
             <a class="navbar-brand" href="{{ url_for('main.dashboard') }}">
-                <i class="bi bi-people-fill"></i> Sistema RRHH
+                {% if empresa_global and empresa_global.logo_path %}
+                    <img src="{{ url_for('rrhh.serve_uploads', subpath=empresa_global.logo_path) }}" alt="Logo" class="navbar-logo">
+                {% elif empresa_global and empresa_global.nombre %}
+                    <span class="navbar-logo-fallback">{{ empresa_global.nombre[0:2].upper() }}</span>
+                {% else %}
+                    <i class="bi bi-people-fill"></i>
+                {% endif %}
+                Sistema RRHH
             </a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>

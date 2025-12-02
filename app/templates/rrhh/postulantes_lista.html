@@ -81,9 +81,17 @@
                         <td>{{ postulante.fecha_postulacion.strftime('%d/%m/%Y') }}</td>
                         <td>
                             <a href="{{ url_for('rrhh.postulante_detalle', postulante_id=postulante.id) }}"
-                               class="btn btn-sm btn-outline-primary">
+                               class="btn btn-sm btn-outline-primary"
+                               title="Ver detalles">
                                 <i class="bi bi-eye"></i> Ver
                             </a>
+                            {% if postulante.estado != 'Contratado' and postulante.estado != 'Rechazado' %}
+                            <a href="{{ url_for('rrhh.postulante_detalle', postulante_id=postulante.id) }}#contratar"
+                               class="btn btn-sm btn-success"
+                               title="Contratar">
+                                <i class="bi bi-person-check"></i>
+                            </a>
+                            {% endif %}
                         </td>
                     </tr>
                     {% endfor %}

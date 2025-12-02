@@ -1,10 +1,10 @@
 """
 Script para generar datos de prueba realistas.
 
-Crea:
-- Asistencias completas de octubre para los 6 empleados
-- Descuentos manuales para 3 empleados
-- Sanciones con descuentos automáticos para otros 3 empleados
+ACTUALIZADO PARA PROBAR DETECCIÓN RETROACTIVA DE AUSENCIAS:
+- Crea asistencias hasta hace 5 días
+- Deja vacíos los últimos 4 días hábiles
+- Al acceder al dashboard, debería detectarlos y crear ausencias pendientes
 
 Ejecutar: python scripts/generar_datos_prueba.py
 """
@@ -29,51 +29,78 @@ from app.models import Empleado, Asistencia, Descuento, Sancion, EstadoEmpleadoE
 app = create_app(os.environ.get('FLASK_ENV', 'development'))
 
 def generar_datos_prueba():
-    """Genera datos realistas de prueba"""
+    """Genera datos realistas de prueba - ACTUALIZADO para probar detección retroactiva"""
     
     with app.app_context():
         print("=" * 60)
         print("GENERADOR DE DATOS DE PRUEBA")
+        print("SIMULA SISTEMA APAGADO - PRUEBA DETECCIÓN RETROACTIVA")
         print("=" * 60)
         
         # Obtener los empleados activos
         empleados = Empleado.query.filter_by(estado=EstadoEmpleadoEnum.ACTIVO).all()
         
-        if len(empleados) < 5:
-            print(f"\n❌ ERROR: Solo hay {len(empleados)} empleados. Se necesitan al menos 5.")
+        if len(empleados) < 1:
+            print(f"\n❌ ERROR: No hay empleados activos.")
             return False
         
-        print(f"\n✓ Encontrados {len(empleados)} empleados:")
+        print(f"\n✓ Encontrados {len(empleados)} empleados activos:")
         for emp in empleados:
             print(f"  - {emp.nombre_completo} (ID: {emp.id})")
         
-        # Octubre 2025
-        año = 2025
-        mes = 10
+        # ============================================
+        # PASO 1: BORRAR ASISTENCIAS DE LOS ÚLTIMOS 4 DÍAS HÁBILES
+        # ============================================
+        print(f"\n🗑️  PASO 1: Borrando asistencias de los últimos 4 días hábiles...")
+        print(f"   (Simula que el sistema estuvo apagado)")
         
-        # Obtener días hábiles de octubre (lunes a viernes)
-        primer_día = date(año, mes, 1)
-        último_día = date(año, mes, calendar.monthrange(año, mes)[1])
+        hoy = date.today()
+        dias_a_borrar = []
+        fecha_check = hoy - timedelta(days=1)
         
-        días_hábiles = []
-        fecha_actual = primer_día
-        while fecha_actual <= último_día:
-            # Lunes = 0, Domingo = 6
-            if fecha_actual.weekday() < 5:  # Lunes a viernes
-                días_hábiles.append(fecha_actual)
-            fecha_actual += timedelta(days=1)
+        # Buscar los últimos 4 días hábiles
+        while len(dias_a_borrar) < 4:
+            if fecha_check.weekday() < 5:  # Solo lunes a viernes
+                dias_a_borrar.append(fecha_check)
+            fecha_check -= timedelta(days=1)
         
-        print(f"\n📅 Octubre {año}: {len(días_hábiles)} días hábiles")
-        print(f"   Rango: {primer_día.strftime('%d/%m')} - {último_día.strftime('%d/%m')}")
+        dias_a_borrar.reverse()  # Ordenar cronológicamente
+        
+        print(f"   Días a borrar:")
+        for dia in dias_a_borrar:
+            print(f"     - {dia.strftime('%d/%m/%Y - %A')}")
+        
+        borradas = 0
+        for dia in dias_a_borrar:
+            eliminadas = Asistencia.query.filter_by(fecha=dia).delete()
+            borradas += eliminadas
+        
+        db.session.commit()
+        print(f"   ✓ {borradas} asistencias eliminadas")
         
         # ============================================
-        # 1. GENERAR ASISTENCIAS (TODOS PRESENTE)
+        # PASO 2: CREAR ASISTENCIAS HASTA HACE 5 DÍAS
         # ============================================
-        print(f"\n📝 Generando asistencias...")
+        print(f"\n📝 PASO 2: Creando asistencias hasta hace 5 días hábiles...")
+        
+        # Calcular fecha límite (hace 5 días hábiles)
+        fecha_limite = hoy - timedelta(days=7)  # Empezar desde hace una semana
+        dias_creados = []
+        fecha_check = fecha_limite
+        
+        # Buscar hasta 10 días hábiles atrás
+        while len(dias_creados) < 10 and fecha_check < (hoy - timedelta(days=4)):
+            if fecha_check.weekday() < 5:  # Solo lunes a viernes
+                dias_creados.append(fecha_check)
+            fecha_check += timedelta(days=1)
+        
+        print(f"   Creando asistencias para {len(dias_creados)} días:")
+        for dia in dias_creados:
+            print(f"     - {dia.strftime('%d/%m/%Y - %A')}")
         
         contador_asistencias = 0
         for empleado in empleados:
-            for día in días_hábiles:
+            for día in dias_creados:
                 # Verificar si ya existe
                 existe = Asistencia.query.filter_by(
                     empleado_id=empleado.id,
@@ -87,24 +114,13 @@ def generar_datos_prueba():
                         hora_entrada=datetime.strptime("08:00", "%H:%M").time(),
                         hora_salida=datetime.strptime("17:00", "%H:%M").time(),
                         presente=True,
-                        observaciones="Presente"
+                        observaciones="Presente - Asistencia normal"
                     )
                     db.session.add(asistencia)
                     contador_asistencias += 1
         
         db.session.commit()
-        print(f"   ✓ {contador_asistencias} asistencias creadas ({len(empleados)} × {len(días_hábiles)} días)")
-        
-        # ============================================
-        # 2. AGREGAR DESCUENTOS A 3 EMPLEADOS (SALTADO)
-        # ============================================
-        print(f"\n💰 Descuentos: Requieren migración de BD (columna 'activo')")
-        print(f"   [Saltado por ahora - La BD necesita: ALTER TABLE descuentos ADD COLUMN activo BOOLEAN DEFAULT TRUE]")
-        
-        # ============================================
-        # 3. AGREGAR SANCIONES (SALTADO)
-        # ============================================
-        print(f"\n⚠️  Sanciones: Saltadas por ahora (dependen de descuentos)")
+        print(f"   ✓ {contador_asistencias} asistencias creadas")
         
         # ============================================
         # RESUMEN FINAL
@@ -115,28 +131,36 @@ def generar_datos_prueba():
         
         print(f"""
 RESUMEN:
-✓ Asistencias: {len(empleados)} empleados × {len(días_hábiles)} días = {contador_asistencias} registros
-⚠️  Descuentos: Requieren migración (se pueden agregar después)
-⚠️  Sanciones: Requieren migración (se pueden agregar después)
+✓ Eliminadas: {borradas} asistencias de los últimos 4 días hábiles
+✓ Creadas: {contador_asistencias} asistencias de días anteriores
+✓ Empleados procesados: {len(empleados)}
 
-PRÓXIMO PASO:
-1. Ejecuta la migración de BD:
-   ALTER TABLE descuentos ADD COLUMN activo BOOLEAN DEFAULT TRUE;
+📌 DÍAS SIN ASISTENCIAS (simulan sistema apagado):
+""")
+        for dia in dias_a_borrar:
+            print(f"   ❌ {dia.strftime('%d/%m/%Y - %A')} - SIN REGISTROS")
+        
+        print(f"""
+🎯 PRÓXIMOS PASOS PARA PROBAR LA DETECCIÓN RETROACTIVA:
 
-DESPUÉS PODRÁS:
-1. Ir a: Menú → Nómina → Generar (liquidaciones)
-2. Seleccionar período: 2025-10 (octubre)
-3. Ver las liquidaciones con:
-   - Salario base
-   - Ingresos extras (si hay)
-   - Aporte IPS
-   - Salario neto
+1. Accede al Dashboard del sistema: http://localhost:5000/dashboard
 
+2. El sistema DEBERÍA:
+   ✓ Detectar que faltan asistencias de esos {len(dias_a_borrar)} días
+   ✓ Crear automáticamente ausencias con estado PENDIENTE
+   ✓ Mostrar el BANNER ROJO con las alertas de ausencias
 
-PRÓXIMAS PRUEBAS:
-- Registrar un despido y ver liquidación automática
-- Generar aguinaldos de 2025
-- Descargar PDFs
+3. Verifica en consola del servidor Flask:
+   Deberías ver: "✅ Creadas X ausencias retroactivas de días faltantes"
+
+4. En el Dashboard verás:
+   🚨 Banner rojo con empleados que tienen ausencias pendientes
+   📋 Listado de todos los empleados con días sin justificar
+
+NOTA: Si no ves el banner, verifica:
+- Que el servidor Flask esté corriendo
+- Que haya empleados ACTIVOS en el sistema
+- Revisa la consola del servidor para mensajes de debug
         """)
         
         return True

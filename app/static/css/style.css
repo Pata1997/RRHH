@@ -220,3 +220,133 @@ footer {
         page-break-inside: avoid;
     }
 }
+
+/* ============ LOGO EMPRESA ============ */
+
+/* Logo en Login */
+.login-logo-container {
+    text-align: center;
+    margin-bottom: 2rem;
+}
+
+.login-logo-container img {
+    max-width: 220px;
+    max-height: 120px;
+    object-fit: contain;
+    margin-bottom: 0.5rem;
+}
+
+.login-logo-fallback {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 100px;
+    height: 100px;
+    background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
+    color: white;
+    font-size: 2.5rem;
+    font-weight: 700;
+    border-radius: 50%;
+    margin-bottom: 0.5rem;
+    box-shadow: 0 4px 12px rgba(0, 51, 102, 0.3);
+}
+
+.login-empresa-nombre {
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--primary-color);
+    margin-top: 0.5rem;
+}
+
+/* Logo en Navbar */
+.navbar-logo {
+    max-height: 40px;
+    max-width: 120px;
+    object-fit: contain;
+    margin-right: 10px;
+}
+
+.navbar-logo-fallback {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    background: rgba(255, 255, 255, 0.2);
+    color: white;
+    font-size: 1rem;
+    font-weight: 700;
+    border-radius: 6px;
+    margin-right: 8px;
+}
+
+/* Logo en Dashboard Header */
+.dashboard-header {
+    background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+    border-bottom: 3px solid var(--primary-color);
+    padding: 1.5rem;
+    margin-bottom: 2rem;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.dashboard-logo {
+    max-height: 80px;
+    max-width: 200px;
+    object-fit: contain;
+}
+
+.dashboard-logo-fallback {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 70px;
+    height: 70px;
+    background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
+    color: white;
+    font-size: 2rem;
+    font-weight: 700;
+    border-radius: 12px;
+    box-shadow: 0 4px 12px rgba(0, 51, 102, 0.2);
+}
+
+.dashboard-empresa-info h4 {
+    color: var(--primary-color);
+    font-weight: 700;
+    margin-bottom: 0.25rem;
+}
+
+.dashboard-empresa-info p {
+    color: #6c757d;
+    margin-bottom: 0.2rem;
+    font-size: 0.95rem;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .login-logo-container img {
+        max-width: 180px;
+        max-height: 90px;
+    }
+    
+    .login-logo-fallback {
+        width: 80px;
+        height: 80px;
+        font-size: 2rem;
+    }
+    
+    .dashboard-header {
+        padding: 1rem;
+    }
+    
+    .dashboard-logo {
+        max-height: 60px;
+        max-width: 150px;
+    }
+    
+    .dashboard-logo-fallback {
+        width: 50px;
+        height: 50px;
+        font-size: 1.5rem;
+    }
+}

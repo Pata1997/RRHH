@@ -174,6 +174,15 @@
                         <span class="badge bg-secondary p-3 fs-6">{{ postulante.estado }}</span>
                         {% endif %}
                     </div>
+                    
+                    <!-- Botón Contratar -->
+                    {% if postulante.estado != 'Contratado' and postulante.estado != 'Rechazado' %}
+                    <div class="mb-4">
+                        <button type="button" class="btn btn-success btn-lg w-100" data-bs-toggle="modal" data-bs-target="#modalContratar">
+                            <i class="bi bi-person-check-fill"></i> 🎉 Contratar como Empleado
+                        </button>
+                    </div>
+                    {% endif %}
 
                     <form method="POST" action="{{ url_for('rrhh.postulante_cambiar_estado', postulante_id=postulante.id) }}">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
@@ -223,4 +232,177 @@
         </div>
     </div>
 </div>
+
+<!-- Modal de Contratación -->
+<div class="modal fade" id="modalContratar" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title">
+                    <i class="bi bi-person-check-fill"></i> 🎉 Contratar a {{ postulante.nombre }} {{ postulante.apellido }}
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" action="{{ url_for('rrhh.postulante_contratar', postulante_id=postulante.id) }}" id="formContratar">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                <div class="modal-body">
+                    <!-- Datos del Postulante -->
+                    <div class="alert alert-info">
+                        <h6 class="mb-2">✅ Datos del Postulante (se copiarán al empleado):</h6>
+                        <ul class="mb-0">
+                            <li><strong>Nombre:</strong> {{ postulante.nombre }} {{ postulante.apellido }}</li>
+                            {% if postulante.email %}<li><strong>Email:</strong> {{ postulante.email }} <small class="text-muted">(puede modificar abajo)</small></li>{% endif %}
+                            {% if postulante.telefono %}<li><strong>Teléfono:</strong> {{ postulante.telefono }}</li>{% endif %}
+                            {% if postulante.fecha_nacimiento %}<li><strong>Fecha Nac.:</strong> {{ postulante.fecha_nacimiento.strftime('%d/%m/%Y') }}</li>{% endif %}
+                        </ul>
+                    </div>
+                    
+                    <div class="alert alert-warning">
+                        <strong>⚠️ Datos Faltantes Obligatorios:</strong>
+                        <p class="mb-0 small">Complete los siguientes campos para crear el empleado</p>
+                    </div>
+                    
+                    <!-- Campos Obligatorios -->
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="ci" class="form-label">Cédula de Identidad <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="ci" name="ci" required 
+                                   placeholder="1234567" pattern="[0-9]+" maxlength="20">
+                            <div class="form-text">Solo números, sin puntos ni guiones</div>
+                        </div>
+                        
+                        <div class="col-md-6 mb-3">
+                            <label for="codigo" class="form-label">Código Empleado <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="codigo" name="codigo" required
+                                   placeholder="EMP-001" value="{{ codigo_sugerido }}">
+                            <div class="form-text">Código único del empleado</div>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="cargo_id" class="form-label">Cargo <span class="text-danger">*</span></label>
+                            <select class="form-select" id="cargo_id" name="cargo_id" required>
+                                <option value="">— Seleccionar Cargo —</option>
+                                {% for cargo in cargos %}
+                                <option value="{{ cargo.id }}" 
+                                        data-salario="{{ cargo.salario_base }}"
+                                        {% if postulante.cargo_postulado and cargo.nombre|lower in postulante.cargo_postulado|lower %}selected{% endif %}>
+                                    {{ cargo.nombre }} (Gs. {{ "{:,.0f}".format(cargo.salario_base) }})
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        
+                        <div class="col-md-6 mb-3">
+                            <label for="salario_base" class="form-label">Salario Base <span class="text-danger">*</span></label>
+                            <input type="number" class="form-control" id="salario_base" name="salario_base" required
+                                   value="{{ postulante.salario_esperado or '' }}" step="1000" min="0">
+                            <div class="form-text">Guaraníes mensuales</div>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="fecha_ingreso" class="form-label">Fecha de Ingreso <span class="text-danger">*</span></label>
+                            <input type="date" class="form-control" id="fecha_ingreso" name="fecha_ingreso" required
+                                   value="{{ fecha_hoy }}">
+                        </div>
+                        
+                        <div class="col-md-6 mb-3">
+                            <label for="sexo" class="form-label">Sexo</label>
+                            <select class="form-select" id="sexo" name="sexo">
+                                <option value="">— No especificar —</option>
+                                <option value="M">Masculino</option>
+                                <option value="F">Femenino</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <!-- Campos Opcionales -->
+                    <hr>
+                    <h6 class="mb-3">Datos Opcionales:</h6>
+                    
+                    <div class="mb-3">
+                        <label for="email_empleado" class="form-label">Email del Empleado</label>
+                        <input type="email" class="form-control" id="email_empleado" name="email_empleado"
+                               value="{{ postulante.email or '' }}" placeholder="email@ejemplo.com">
+                        <div class="form-text">⚠️ Si el email ya existe, modifíquelo o déjelo vacío</div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="direccion" class="form-label">Dirección</label>
+                            <input type="text" class="form-control" id="direccion" name="direccion"
+                                   placeholder="Calle, barrio, ciudad">
+                        </div>
+                        
+                        <div class="col-md-6 mb-3">
+                            <label for="nacionalidad" class="form-label">Nacionalidad</label>
+                            <input type="text" class="form-control" id="nacionalidad" name="nacionalidad"
+                                   value="Paraguaya" placeholder="Paraguaya">
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="ips_numero" class="form-label">Número IPS</label>
+                        <input type="text" class="form-control" id="ips_numero" name="ips_numero"
+                               placeholder="Número de asegurado en IPS">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                        <i class="bi bi-x-circle"></i> Cancelar
+                    </button>
+                    <button type="submit" class="btn btn-success btn-lg">
+                        <i class="bi bi-check-circle-fill"></i> ✅ Confirmar Contratación
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+// Abrir modal automáticamente si llegan con #contratar
+document.addEventListener('DOMContentLoaded', function() {
+    if (window.location.hash === '#contratar') {
+        const modal = new bootstrap.Modal(document.getElementById('modalContratar'));
+        modal.show();
+    }
+});
+
+// Auto-actualizar salario cuando se selecciona un cargo
+document.getElementById('cargo_id').addEventListener('change', function() {
+    const selectedOption = this.options[this.selectedIndex];
+    const salario = selectedOption.getAttribute('data-salario');
+    if (salario) {
+        document.getElementById('salario_base').value = salario;
+    }
+});
+
+// Validación del formulario
+document.getElementById('formContratar').addEventListener('submit', function(e) {
+    const ci = document.getElementById('ci').value.trim();
+    const codigo = document.getElementById('codigo').value.trim();
+    const cargo_id = document.getElementById('cargo_id').value;
+    const salario = document.getElementById('salario_base').value;
+    
+    if (!ci || !codigo || !cargo_id || !salario) {
+        e.preventDefault();
+        alert('⚠️ Por favor complete todos los campos obligatorios marcados con *');
+        return false;
+    }
+    
+    if (!/^[0-9]+$/.test(ci)) {
+        e.preventDefault();
+        alert('⚠️ La cédula debe contener solo números');
+        document.getElementById('ci').focus();
+        return false;
+    }
+    
+    return true;
+});
+</script>
+
 {% endblock %}

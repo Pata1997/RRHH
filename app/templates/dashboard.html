@@ -4,6 +4,49 @@
 
 {% block content %}
 <div class="container-fluid">
+    <!-- Header Empresarial -->
+    {% if empresa_global %}
+    <div class="dashboard-header mb-4">
+        <div class="row align-items-center">
+            <div class="col-md-2 text-center">
+                {% if empresa_global.logo_path %}
+                    <img src="{{ url_for('rrhh.serve_uploads', subpath=empresa_global.logo_path) }}" 
+                         alt="{{ empresa_global.nombre }}" 
+                         class="dashboard-logo">
+                {% else %}
+                    <div class="dashboard-logo-fallback">
+                        {% if empresa_global.nombre %}
+                            {{ empresa_global.nombre[0:2].upper() }}
+                        {% else %}
+                            <i class="bi bi-building"></i>
+                        {% endif %}
+                    </div>
+                {% endif %}
+            </div>
+            <div class="col-md-10 dashboard-empresa-info">
+                <h4>{{ empresa_global.nombre }}</h4>
+                {% if empresa_global.ruc %}
+                    <p><i class="bi bi-file-text"></i> <strong>RUC:</strong> {{ empresa_global.ruc }}</p>
+                {% endif %}
+                {% if empresa_global.direccion %}
+                    <p><i class="bi bi-geo-alt"></i> {{ empresa_global.direccion }}
+                    {% if empresa_global.ciudad %} - {{ empresa_global.ciudad }}{% endif %}</p>
+                {% endif %}
+                {% if empresa_global.telefono or empresa_global.email %}
+                    <p>
+                        {% if empresa_global.telefono %}
+                            <i class="bi bi-telephone"></i> {{ empresa_global.telefono }}
+                        {% endif %}
+                        {% if empresa_global.email %}
+                            <i class="bi bi-envelope ms-3"></i> {{ empresa_global.email }}
+                        {% endif %}
+                    </p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+    
     <div class="row mb-4">
         <div class="col-md-12">
             <h1 class="mb-4">

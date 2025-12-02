@@ -54,26 +54,28 @@ def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
-# Servir archivos subidos (permisos/sanciones/postulantes)
+# Servir archivos subidos (permisos/sanciones/postulantes/empresa)
 @rrhh_bp.route('/uploads/<path:subpath>')
-@login_required
 def serve_uploads(subpath):
+    """
+    Sirve archivos subidos. 
+    - Logo de empresa (empresa/*): acceso público para login
+    - Otros archivos: requieren autenticación
+    """
+    # Verificar si es logo de empresa (acceso público)
+    es_logo_empresa = subpath.startswith('empresa/')
+    
+    # Si no es logo de empresa, requerir autenticación
+    if not es_logo_empresa and not current_user.is_authenticated:
+        return redirect(url_for('auth.login', next=request.url))
+    
     # base debe apuntar a app/ para buscar app/uploads/...
     base = os.path.dirname(os.path.dirname(__file__))  # app/
-    # Pero subpath viene como "uploads/permisos/archivo.pdf"
-    # Queremos buscar en app/uploads/permisos/archivo.pdf
-    # Así que no necesitamos el prefijo "uploads/" en subpath
     filepath = os.path.join(base, 'uploads', subpath)
-    print(f"\n=== DEBUG serve_uploads ===")
-    print(f"subpath: {subpath}")
-    print(f"base: {base}")
-    print(f"filepath: {filepath}")
-    print(f"exists: {os.path.exists(filepath)}")
-    if os.path.exists(filepath):
-        print(f"✓ Sirviendo archivo: {filepath}")
+    
     if not os.path.exists(filepath):
-        print(f"ERROR: Archivo no encontrado")
         return jsonify({'error': 'File not found'}), 404
+    
     return send_file(filepath)
 
 # ==================== EMPLEADOS ====================
@@ -2405,8 +2407,11 @@ def descargar_recibo_pdf(liquidacion_id):
         liquidacion_id, 'Descarga de recibo PDF'
     )
     
+    # Obtener empresa para membrete
+    empresa = Empresa.query.first()
+    
     # Generar PDF
-    pdf_buffer = ReportUtils.generar_recibo_salario(empleado, liquidacion)
+    pdf_buffer = ReportUtils.generar_recibo_salario(empleado, liquidacion, empresa)
     
     return send_file(
         pdf_buffer,
@@ -2432,7 +2437,10 @@ def descargar_planilla_mensual(periodo):
         detalle=f'Descarga de planilla mensual {periodo}'
     )
     
-    pdf_buffer = ReportUtils.generar_planilla_mensual(empleados_liquidaciones, periodo)
+    # Obtener empresa para membrete
+    empresa = Empresa.query.first()
+    
+    pdf_buffer = ReportUtils.generar_planilla_mensual(empleados_liquidaciones, periodo, empresa)
     
     return send_file(
         pdf_buffer,
@@ -4466,7 +4474,136 @@ def postulante_nuevo():
 def postulante_detalle(postulante_id):
     """Detalle de un postulante"""
     postulante = Postulante.query.get_or_404(postulante_id)
-    return render_template('rrhh/postulante_detalle.html', postulante=postulante)
+    
+    # Datos para el modal de contratación
+    cargos = Cargo.query.order_by(Cargo.nombre).all()
+    
+    # Generar código sugerido para empleado
+    ultimo_empleado = Empleado.query.order_by(Empleado.id.desc()).first()
+    if ultimo_empleado and ultimo_empleado.codigo:
+        try:
+            # Intentar extraer número del último código (ej: EMP-001 -> 001)
+            partes = ultimo_empleado.codigo.split('-')
+            if len(partes) > 1 and partes[-1].isdigit():
+                siguiente_num = int(partes[-1]) + 1
+                codigo_sugerido = f"EMP-{siguiente_num:03d}"
+            else:
+                codigo_sugerido = f"EMP-{ultimo_empleado.id + 1:03d}"
+        except:
+            codigo_sugerido = f"EMP-{(ultimo_empleado.id + 1):03d}"
+    else:
+        codigo_sugerido = "EMP-001"
+    
+    fecha_hoy = date.today().strftime('%Y-%m-%d')
+    
+    return render_template('rrhh/postulante_detalle.html', 
+                         postulante=postulante,
+                         cargos=cargos,
+                         codigo_sugerido=codigo_sugerido,
+                         fecha_hoy=fecha_hoy)
+
+
+@rrhh_bp.route('/postulantes/<int:postulante_id>/contratar', methods=['POST'])
+@login_required
+@role_required(RoleEnum.RRHH)
+def postulante_contratar(postulante_id):
+    """Contratar postulante como empleado"""
+    postulante = Postulante.query.get_or_404(postulante_id)
+    
+    # Validar que no esté ya contratado
+    if postulante.estado == 'Contratado':
+        flash('Este postulante ya fue contratado', 'warning')
+        return redirect(url_for('rrhh.postulante_detalle', postulante_id=postulante_id))
+    
+    try:
+        # Obtener datos del formulario
+        codigo = request.form.get('codigo', '').strip()
+        ci = request.form.get('ci', '').strip()
+        cargo_id = request.form.get('cargo_id')
+        salario_base = request.form.get('salario_base')
+        fecha_ingreso_str = request.form.get('fecha_ingreso')
+        
+        # Validaciones
+        if not all([codigo, ci, cargo_id, salario_base, fecha_ingreso_str]):
+            flash('Todos los campos obligatorios deben ser completados', 'danger')
+            return redirect(url_for('rrhh.postulante_detalle', postulante_id=postulante_id))
+        
+        # Verificar duplicados
+        if Empleado.query.filter_by(codigo=codigo).first():
+            flash(f'El código "{codigo}" ya existe. Use otro código.', 'danger')
+            return redirect(url_for('rrhh.postulante_detalle', postulante_id=postulante_id))
+        
+        if Empleado.query.filter_by(ci=ci).first():
+            flash(f'La cédula "{ci}" ya está registrada en el sistema', 'danger')
+            return redirect(url_for('rrhh.postulante_detalle', postulante_id=postulante_id))
+        
+        # Obtener email del formulario (puede ser modificado)
+        email_empleado = request.form.get('email_empleado', '').strip() or None
+        
+        # Verificar email duplicado (solo si se proporciona email)
+        if email_empleado and Empleado.query.filter_by(email=email_empleado).first():
+            flash(f'El email "{email_empleado}" ya está registrado en otro empleado. Use un email diferente o déjelo vacío.', 'warning')
+            return redirect(url_for('rrhh.postulante_detalle', postulante_id=postulante_id))
+        
+        # Crear empleado con datos del postulante + datos nuevos
+        fecha_ingreso = datetime.strptime(fecha_ingreso_str, '%Y-%m-%d').date()
+        
+        empleado = Empleado(
+            codigo=codigo,
+            nombre=postulante.nombre,
+            apellido=postulante.apellido,
+            ci=ci,
+            email=email_empleado,  # Usar email del formulario (puede ser None)
+            telefono=postulante.telefono,
+            cargo_id=int(cargo_id),
+            salario_base=Decimal(salario_base),
+            fecha_ingreso=fecha_ingreso,
+            fecha_nacimiento=postulante.fecha_nacimiento,
+            direccion=request.form.get('direccion', '').strip() or None,
+            nacionalidad=request.form.get('nacionalidad', '').strip() or 'Paraguaya',
+            ips_numero=request.form.get('ips_numero', '').strip() or None,
+            sexo=request.form.get('sexo', '').strip() or None,
+            estado=EstadoEmpleadoEnum.ACTIVO
+        )
+        
+        db.session.add(empleado)
+        db.session.flush()  # Para obtener el ID del empleado
+        
+        # Actualizar postulante
+        postulante.estado = 'Contratado'
+        postulante.empleado_id = empleado.id
+        postulante.fecha_actualizado = datetime.utcnow()
+        
+        db.session.commit()
+        
+        # Registrar en bitácora
+        registrar_operacion_crud(
+            current_user, 'empleados', 'CREATE', 'empleados',
+            empleado.id, 
+            {
+                'codigo': codigo, 
+                'nombre': empleado.nombre_completo,
+                'origen': f'Postulante ID {postulante_id}'
+            }
+        )
+        
+        registrar_operacion_crud(
+            current_user, 'postulantes', 'UPDATE', 'postulantes',
+            postulante.id,
+            {'estado': 'Contratado', 'empleado_id': empleado.id}
+        )
+        
+        flash(f'¡🎉 {empleado.nombre_completo} ha sido contratado exitosamente como {empleado.cargo.nombre}!', 'success')
+        return redirect(url_for('rrhh.perfil_empleado', empleado_id=empleado.id))
+        
+    except ValueError as ve:
+        db.session.rollback()
+        flash(f'Error en los datos proporcionados: {str(ve)}', 'danger')
+        return redirect(url_for('rrhh.postulante_detalle', postulante_id=postulante_id))
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Error al contratar postulante: {str(e)}', 'danger')
+        return redirect(url_for('rrhh.postulante_detalle', postulante_id=postulante_id))
 
 
 @rrhh_bp.route('/postulantes/<int:postulante_id>/cambiar-estado', methods=['POST'])

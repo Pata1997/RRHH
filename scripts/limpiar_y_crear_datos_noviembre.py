@@ -47,7 +47,7 @@ from sqlalchemy import func
 # CONFIGURACIÓN
 # ============================================
 AÑO = 2025
-MES = 11  # Noviembre
+MES = 12  # Diciembre
 
 TABLAS_A_LIMPIAR = [
     (Asistencia, 'asistencias'),
@@ -132,13 +132,27 @@ def obtener_dias_habiles(año, mes):
 
 
 def generar_asistencias_realistas(app, empleados, dias_habiles):
-    """Genera asistencias realistas con variedad de situaciones"""
+    """Genera asistencias realistas con variedad de situaciones
+    
+    ACTUALIZADO: Deja vacíos los últimos 4 días hábiles para simular
+    que el sistema estuvo apagado y probar detección retroactiva
+    """
+    
+    # Excluir los últimos 4 días hábiles (simular sistema apagado)
+    DIAS_EXCLUIR = 4
+    dias_a_generar = dias_habiles[:-DIAS_EXCLUIR] if len(dias_habiles) > DIAS_EXCLUIR else dias_habiles
+    dias_sin_registro = dias_habiles[-DIAS_EXCLUIR:] if len(dias_habiles) > DIAS_EXCLUIR else []
     
     print('\n' + '='*60)
-    print('📝 GENERANDO ASISTENCIAS DE NOVIEMBRE 2025')
+    print('📝 GENERANDO ASISTENCIAS DE DICIEMBRE 2025')
+    print('   ⚠️  SIMULANDO SISTEMA APAGADO - ÚLTIMOS 4 DÍAS SIN REGISTROS')
     print('='*60)
     print(f'  Empleados: {len(empleados)}')
-    print(f'  Días hábiles: {len(dias_habiles)} ({dias_habiles[0]} a {dias_habiles[-1]})')
+    print(f'  Días hábiles totales: {len(dias_habiles)} ({dias_habiles[0]} a {dias_habiles[-1]})')
+    print(f'  Días con asistencias: {len(dias_a_generar)} ({dias_a_generar[0] if dias_a_generar else "N/A"} a {dias_a_generar[-1] if dias_a_generar else "N/A"})')
+    print(f'  Días SIN registros (simula sistema apagado):')
+    for dia in dias_sin_registro:
+        print(f'     ❌ {dia.strftime("%d/%m/%Y - %A")}')
     
     with app.app_context():
         from sqlalchemy import text
@@ -214,8 +228,9 @@ def generar_asistencias_realistas(app, empleados, dias_habiles):
         contador['sin_almuerzo'] = 0
         
         # Generar asistencias VARIADAS para cada empleado (Nivel 2: Observaciones Detalladas)
+        # SOLO para los días que NO están excluidos
         for empleado in empleados:
-            for dia in dias_habiles:
+            for dia in dias_a_generar:
                 # Verificar si está de vacaciones
                 if empleado.id in vacaciones_asignadas:
                     if dia in vacaciones_asignadas[empleado.id]:
@@ -567,7 +582,7 @@ def main():
     print('\n' + '='*60)
     print('🚀 SCRIPT DE LIMPIEZA Y GENERACIÓN DE DATOS')
     print('='*60)
-    print(f'  Período: Noviembre {AÑO}')
+    print(f'  Período: Diciembre {AÑO}')
     print(f'  Fecha actual: {date.today()}')
     
     if args.dry_run:
@@ -579,11 +594,12 @@ def main():
         print('='*60)
         print('  1. Eliminar todos los datos de las tablas de históricos')
         print('  2. Mantener intactos: Usuarios, Empleados, Cargos, Contratos')
-        print('  3. Generar datos de Noviembre 2025:')
+        print('  3. Generar datos de Diciembre 2025:')
         print('     - Asistencias variadas (presentes, tardanzas, ausencias)')
         print('     - Vacaciones para 2-3 empleados (2-3 días)')
         print('     - Permisos ocasionales')
         print('     - Algunos descuentos y sanciones')
+        print('     ⚠️  Últimos 4 días SIN registros (simula sistema apagado)')
         print('\n⚠️  IMPORTANTE: Haz backup antes de ejecutar con --ejecutar')
         return
     
@@ -606,17 +622,29 @@ def main():
             print('\n' + '='*60)
             print('✅ PROCESO COMPLETADO EXITOSAMENTE')
             print('='*60)
-            print('\n📋 PRÓXIMOS PASOS:')
-            print('  1. Ve a: Menú → Asistencia → Ver registros')
-            print('  2. Revisa las asistencias de Noviembre 2025')
-            print('  3. Genera liquidaciones: Menú → Nómina → Generar')
-            print('  4. Selecciona período: 2025-11 (noviembre)')
-            print('\n💡 TIP: Los datos incluyen:')
+            print('\n⚠️  IMPORTANTE - SISTEMA SIMULADO APAGADO:')
+            print('  Los últimos 4 días hábiles NO tienen asistencias registradas')
+            print('  Esto simula que el sistema estuvo apagado esos días')
+            print('\n📋 PRÓXIMOS PASOS PARA PROBAR DETECCIÓN RETROACTIVA:')
+            print('  1. Accede al Dashboard: http://localhost:5000/dashboard')
+            print('  2. El sistema DEBERÍA detectar automáticamente:')
+            print('     ✓ Días faltantes sin registros de asistencia')
+            print('     ✓ Crear ausencias pendientes para esos días')
+            print('     ✓ Mostrar BANNER ROJO con alertas')
+            print('\n  3. Verifica en consola del servidor Flask:')
+            print('     Deberías ver: "✅ Creadas X ausencias retroactivas..."')
+            print('\n  4. En el Dashboard verás:')
+            print('     🚨 Banner con empleados que tienen ausencias pendientes')
+            print('\n💡 DATOS GENERADOS:')
+            print('  • Asistencias de Diciembre (excepto últimos 4 días hábiles)')
             print('  • Llegadas tardías (marcadas en observaciones)')
             print('  • Ausencias injustificadas')
             print('  • Vacaciones de 2-3 días')
             print('  • Permisos aprobados')
             print('  • Descuentos y sanciones de ejemplo')
+            print('\n🎯 PRUEBA LA DETECCIÓN RETROACTIVA:')
+            print('  Al acceder al dashboard, el sistema creará automáticamente')
+            print('  las ausencias de los últimos 4 días hábiles faltantes')
         else:
             print('\n❌ Hubo errores durante la generación de datos')
 

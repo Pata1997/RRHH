@@ -1,11 +1,12 @@
 from reportlab.lib.pagesizes import letter, A4
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak, Image
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT, TA_JUSTIFY
 from datetime import datetime
 import io
+import os
 from decimal import Decimal
 
 def formato_guaranies(valor):
@@ -21,17 +22,134 @@ def formato_guaranies(valor):
     except (ValueError, TypeError):
         return str(valor)
 
+def crear_membrete_empresa(empresa, styles):
+    """
+    Crea el membrete empresarial con logo para los reportes PDF
+    
+    Args:
+        empresa: Objeto Empresa con los datos
+        styles: Estilos de ReportLab
+        
+    Returns:
+        Lista de elementos para agregar al story
+    """
+    elementos = []
+    
+    # Datos de la empresa
+    empresa_data = []
+    
+    # Si hay logo, incluirlo
+    if empresa and empresa.logo_path:
+        try:
+            # Construir ruta absoluta al logo
+            from flask import current_app
+            # logo_path ya incluye "empresa/logo_123.png"
+            logo_path = os.path.join(current_app.config['UPLOAD_FOLDER'], empresa.logo_path)
+            
+            if os.path.exists(logo_path):
+                # Crear imagen con tamaño proporcional
+                img = Image(logo_path)
+                img._restrictSize(2*inch, 1*inch)  # Max 2x1 pulgadas
+                
+                # Información de la empresa
+                empresa_info = []
+                if empresa.nombre:
+                    empresa_info.append(Paragraph(f"<b>{empresa.nombre}</b>", styles['Normal']))
+                if empresa.ruc:
+                    empresa_info.append(Paragraph(f"RUC: {empresa.ruc}", styles['Normal']))
+                if empresa.direccion:
+                    direccion_completa = empresa.direccion
+                    if empresa.ciudad:
+                        direccion_completa += f" - {empresa.ciudad}"
+                    empresa_info.append(Paragraph(direccion_completa, styles['Normal']))
+                if empresa.telefono or empresa.email:
+                    contacto = []
+                    if empresa.telefono:
+                        contacto.append(f"Tel: {empresa.telefono}")
+                    if empresa.email:
+                        contacto.append(f"Email: {empresa.email}")
+                    empresa_info.append(Paragraph(" | ".join(contacto), styles['Normal']))
+                
+                # Crear tabla con logo e información
+                membrete_data = [[img, empresa_info]]
+                membrete_table = Table(membrete_data, colWidths=[2*inch, 5.5*inch])
+                membrete_table.setStyle(TableStyle([
+                    ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+                    ('LEFTPADDING', (0, 0), (-1, -1), 0),
+                    ('RIGHTPADDING', (0, 0), (-1, -1), 0),
+                ]))
+                
+                elementos.append(membrete_table)
+                elementos.append(Spacer(1, 0.2*inch))
+                
+                # Línea separadora
+                line_data = [['', '']]
+                line_table = Table(line_data, colWidths=[7.5*inch])
+                line_table.setStyle(TableStyle([
+                    ('LINEABOVE', (0, 0), (-1, 0), 2, colors.HexColor('#003366')),
+                ]))
+                elementos.append(line_table)
+                elementos.append(Spacer(1, 0.15*inch))
+                
+                return elementos
+        except Exception as e:
+            print(f"Error al cargar logo en PDF: {e}")
+            # Continuar sin logo
+    
+    # Si no hay logo o hubo error, usar membrete de texto simple
+    if empresa and empresa.nombre:
+        empresa_style = ParagraphStyle(
+            'EmpresaStyle',
+            parent=styles['Normal'],
+            fontSize=11,
+            alignment=TA_CENTER,
+            spaceAfter=3,
+        )
+        
+        elementos.append(Paragraph(f"<b>{empresa.nombre}</b>", empresa_style))
+        
+        if empresa.ruc:
+            elementos.append(Paragraph(f"RUC: {empresa.ruc}", empresa_style))
+        
+        if empresa.direccion:
+            direccion_completa = empresa.direccion
+            if empresa.ciudad:
+                direccion_completa += f" - {empresa.ciudad}"
+            elementos.append(Paragraph(direccion_completa, empresa_style))
+        
+        if empresa.telefono or empresa.email:
+            contacto = []
+            if empresa.telefono:
+                contacto.append(f"Tel: {empresa.telefono}")
+            if empresa.email:
+                contacto.append(f"Email: {empresa.email}")
+            elementos.append(Paragraph(" | ".join(contacto), empresa_style))
+        
+        elementos.append(Spacer(1, 0.2*inch))
+        
+        # Línea separadora
+        line_data = [['', '']]
+        line_table = Table(line_data, colWidths=[7.5*inch])
+        line_table.setStyle(TableStyle([
+            ('LINEABOVE', (0, 0), (-1, 0), 2, colors.HexColor('#003366')),
+        ]))
+        elementos.append(line_table)
+        elementos.append(Spacer(1, 0.15*inch))
+    
+    return elementos
+
 class ReportUtils:
     """Utilidades para generar reportes PDF con ReportLab"""
     
     @staticmethod
-    def generar_recibo_salario(empleado, liquidacion):
+    def generar_recibo_salario(empleado, liquidacion, empresa=None):
         """
         Genera un recibo de salario en PDF
         
         Args:
             empleado: Objeto Empleado
             liquidacion: Objeto Liquidacion
+            empresa: Objeto Empresa (opcional, para membrete)
             
         Returns:
             BytesIO con el contenido del PDF
@@ -42,6 +160,10 @@ class ReportUtils:
         
         styles = getSampleStyleSheet()
         story = []
+        
+        # Membrete con logo de empresa
+        if empresa:
+            story.extend(crear_membrete_empresa(empresa, styles))
         
         # Encabezado
         title_style = ParagraphStyle(
@@ -157,13 +279,14 @@ class ReportUtils:
         return buffer
     
     @staticmethod
-    def generar_planilla_mensual(empleados_liquidaciones, periodo):
+    def generar_planilla_mensual(empleados_liquidaciones, periodo, empresa=None):
         """
         Genera planilla consolidada mensual
         
         Args:
             empleados_liquidaciones: Lista de tuplas (empleado, liquidacion)
             periodo: String con formato YYYY-MM
+            empresa: Objeto Empresa (opcional, para membrete)
             
         Returns:
             BytesIO con el contenido del PDF
@@ -174,6 +297,10 @@ class ReportUtils:
         
         styles = getSampleStyleSheet()
         story = []
+        
+        # Membrete con logo de empresa
+        if empresa:
+            story.extend(crear_membrete_empresa(empresa, styles))
         
         # Encabezado
         title_style = ParagraphStyle(
@@ -271,15 +398,16 @@ class ReportUtils:
         return buffer
     
     @staticmethod
-    def generar_contrato_pdf(empleado, cargo, fecha_inicio, fecha_fin=None):
+    def generar_contrato_pdf(empleado, cargo, fecha_inicio, fecha_fin=None, empresa=None):
         """
         Genera un contrato de trabajo en PDF
         
         Args:
             empleado: Objeto Empleado
             cargo: Objeto Cargo
-            fecha_inicio: Fecha de inicio del contrato
-            fecha_fin: Fecha de fin del contrato (opcional)
+            fecha_inicio: fecha de inicio del contrato
+            fecha_fin: fecha de fin del contrato (opcional)
+            empresa: Objeto Empresa (opcional, para membrete)
             
         Returns:
             BytesIO con el contenido del PDF
@@ -290,6 +418,10 @@ class ReportUtils:
         
         styles = getSampleStyleSheet()
         story = []
+        
+        # Membrete con logo de empresa
+        if empresa:
+            story.extend(crear_membrete_empresa(empresa, styles))
         
         # Encabezado
         title_style = ParagraphStyle(

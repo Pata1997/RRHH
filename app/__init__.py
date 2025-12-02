@@ -61,6 +61,14 @@ def create_app(config_name=None):
         except (ValueError, TypeError):
             return str(valor)
     
+    # Context processor para empresa (disponible en todos los templates)
+    @app.context_processor
+    def inject_empresa():
+        """Inyecta la información de la empresa en todos los templates"""
+        from .models import Empresa
+        empresa = Empresa.query.first()
+        return dict(empresa_global=empresa)
+    
     # Registrar blueprints
     from .routes.auth import auth_bp
     from .routes.rrhh import rrhh_bp
